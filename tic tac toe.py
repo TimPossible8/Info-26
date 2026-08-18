@@ -1,4 +1,4 @@
-Python 3.13.5 (main, May  5 2026, 21:05:52) [GCC 14.2.0] on linux
+
 Enter "help" below or click "Help" above for more information.
 >>> """
 ... Tic-Tac-Toe with an unbeatable AI opponent.
