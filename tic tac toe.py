@@ -1,34 +1,34 @@
-... import random
-... 
-... def print_board(board):
-...     print()
-...     for i in range(0, 9, 3):
-...         row = board[i:i+3]
-...         print(" " + " | ".join(row))
-...         if i < 6:
-...             print("---+---+---")
-...     print()
-... 
-... def check_winner(board, player):
-...     wins = [
-...         (0,1,2), (3,4,5), (6,7,8),  # rows
-...         (0,3,6), (1,4,7), (2,5,8),  # columns
-...         (0,4,8), (2,4,6),           # diagonals
-...     ]
-...     return any(all(board[i] == player for i in line) for line in wins)
-... 
-... def is_full(board):
-...     return " " not in board
-... 
-... def available_moves(board):
-...     return [i for i, spot in enumerate(board) if spot == " "]
-... 
-... def minimax(board, is_maximizing):
-...     if check_winner(board, "O"):
-...         return 1
-...     if check_winner(board, "X"):
-...         return -1
-...     if is_full(board):
+import random
+
+def print_board(board):
+    print()
+    for i in range(0, 9, 3):
+        row = board[i:i+3]
+        print(" " + " | ".join(row))
+        if i < 6:
+            print("---+---+---")
+    print()
+
+def check_winner(board, player):
+    wins = [
+        (0,1,2), (3,4,5), (6,7,8),  # rows
+        (0,3,6), (1,4,7), (2,5,8),  # columns
+        (0,4,8), (2,4,6),           # diagonals
+    ]
+    return any(all(board[i] == player for i in line) for line in wins)
+
+def is_full(board):
+    return " " not in board
+
+def available_moves(board):
+    return [i for i, spot in enumerate(board) if spot == " "]
+
+def minimax(board, is_maximizing):
+    if check_winner(board, "O"):
+        return 1
+    if check_winner(board, "X"):
+        return -1
+    if is_full(board):
         return 0
 
     if is_maximizing:
@@ -124,3 +124,4 @@ def main():
             break
 
 if __name__ == "__main__":
+    main()
