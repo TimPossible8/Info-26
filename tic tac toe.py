@@ -1,6 +1,3 @@
-... Run with: python tic_tac_toe.py
-... """
-... 
 ... import random
 ... 
 ... def print_board(board):
