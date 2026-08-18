@@ -1,5 +1,3 @@
-
->>> """
 ... Tic-Tac-Toe with an unbeatable AI opponent.
 ... No external libraries required — just standard Python.
 ... 
