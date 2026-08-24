@@ -1,355 +1,342 @@
-
 import streamlit as st
 
-# Seitenkonfiguration
-st.set_page_config(
-    page_title="Material Taschenrechner",
-    page_icon="🧮",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+st.set_page_config(page_title="Material You Taschenrechner", page_icon="🧮", layout="centered")
+
+
+# ----------------------------------------------------------------------
+# Sichere Auswertung ohne eval()[cite: 1]
+# ----------------------------------------------------------------------
+def sichere_auswertung(ausdruck: str):
+    erlaubte_zeichen = set("0123456789.+-*/% ")
+    if not set(ausdruck) <= erlaubte_zeichen:
+        raise ValueError("Ungültiges Zeichen")
+
+    zahlen, operatoren = [], []
+    rangfolge = {"+": 1, "-": 1, "*": 2, "/": 2, "%": 2}
+
+    def anwenden():
+        op = operatoren.pop()
+        b = zahlen.pop()
+        a = zahlen.pop()
+        if op == "+":
+            zahlen.append(a + b)
+        elif op == "-":
+            zahlen.append(a - b)
+        elif op == "*":
+            zahlen.append(a * b)
+        elif op == "/":
+            zahlen.append(a / b)
+        elif op == "%":
+            zahlen.append(a % b)
+
+    i, n = 0, len(ausdruck)
+    erwartet_zahl = True
+    while i < n:
+        ch = ausdruck[i]
+        if ch == " ":
+            i += 1
+            continue
+        if ch.isdigit() or ch == "." or (ch == "-" and erwartet_zahl):
+            j = i + 1
+            while j < n and (ausdruck[j].isdigit() or ausdruck[j] == "."):
+                j += 1
+            zahlen.append(float(ausdruck[i:j]))
+            i = j
+            erwartet_zahl = False
+        elif ch in rangfolge:
+            while operatoren and rangfolge[operatoren[-1]] >= rangfolge[ch]:
+                anwenden()
+            operatoren.append(ch)
+            i += 1
+            erwartet_zahl = True
+        else:
+            raise ValueError("Unerwartetes Zeichen")
+
+    while operatoren:
+        anwenden()
+
+    if len(zahlen) != 1:
+        raise ValueError("Ungültiger Ausdruck")
+    return zahlen[0]
+
+
+# ----------------------------------------------------------------------
+# Zustand initialisieren[cite: 1]
+# ----------------------------------------------------------------------
+if "eingabe" not in st.session_state:
+    st.session_state.eingabe = ""
+if "ausdruck" not in st.session_state:
+    st.session_state.ausdruck = ""
+if "anzeige" not in st.session_state:
+    st.session_state.anzeige = "0"
+
+
+def taste_gedrueckt(taste: str):
+    if taste == "C":
+        st.session_state.eingabe = ""
+        st.session_state.ausdruck = ""
+        st.session_state.anzeige = "0"
+
+    elif taste == "←":
+        st.session_state.eingabe = st.session_state.eingabe[:-1]
+        st.session_state.anzeige = st.session_state.eingabe or "0"
+
+    elif taste == "±":
+        if st.session_state.eingabe.startswith("-"):
+            st.session_state.eingabe = st.session_state.eingabe[1:]
+        elif st.session_state.eingabe:
+            st.session_state.eingabe = "-" + st.session_state.eingabe
+        st.session_state.anzeige = st.session_state.eingabe or "0"
+
+    elif taste == "=":
+        voller_ausdruck = st.session_state.ausdruck + st.session_state.eingabe
+        if voller_ausdruck:
+            try:
+                ergebnis = sichere_auswertung(voller_ausdruck)
+                if float(ergebnis).is_integer():
+                    ergebnis = int(ergebnis)
+                st.session_state.anzeige = str(ergebnis)
+                st.session_state.eingabe = str(ergebnis)
+                st.session_state.ausdruck = ""
+            except (ZeroDivisionError, ValueError, SyntaxError):
+                st.session_state.anzeige = "Fehler"
+                st.session_state.eingabe = ""
+                st.session_state.ausdruck = ""
+
+    elif taste in ("÷", "×", "+", "-", "%"):
+        if st.session_state.eingabe:
+            op = {"÷": "/", "×": "*"}.get(taste, taste)
+            st.session_state.ausdruck += st.session_state.eingabe + op
+            st.session_state.eingabe = ""
+            st.session_state.anzeige = st.session_state.ausdruck
+
+    else:
+        zeichen = "." if taste == "," else taste
+        st.session_state.eingabe += zeichen
+        st.session_state.anzeige = st.session_state.eingabe
+
+
+# ----------------------------------------------------------------------
+# Dynamisches Material You (M3) Design & Adaptive Fenster-Skalierung
+# ----------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap');
+
+    :root {
+        --md-sys-color-primary: #6750A4;
+        --md-sys-color-on-primary: #FFFFFF;
+        --md-sys-color-primary-container: #EADDFF;
+        --md-sys-color-on-primary-container: #21005D;
+        --md-sys-color-secondary-container: #E8DEF8;
+        --md-sys-color-on-secondary-container: #1D192B;
+        --md-sys-color-tertiary-container: #FFD8E4;
+        --md-sys-color-on-tertiary-container: #31111D;
+        --md-sys-color-error-container: #F9DEDC;
+        --md-sys-color-on-error-container: #410E0B;
+        --md-sys-color-surface: #FEF7FF;
+        --md-sys-color-surface-container-high: #F3EDF7;
+        --md-sys-color-surface-container-highest: #E6E0E9;
+        --md-sys-color-on-surface: #1D1B20;
+        --md-sys-color-on-surface-variant: #49454F;
+        --md-sys-color-outline-variant: #CAC4D0;
+        
+        --md-sys-motion-easing: cubic-bezier(0.2, 0.0, 0.0, 1.0);
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --md-sys-color-primary: #D0BCFF;
+            --md-sys-color-on-primary: #381E72;
+            --md-sys-color-primary-container: #4F378B;
+            --md-sys-color-on-primary-container: #EADDFF;
+            --md-sys-color-secondary-container: #4A4458;
+            --md-sys-color-on-secondary-container: #E8DEF8;
+            --md-sys-color-tertiary-container: #633B48;
+            --md-sys-color-on-tertiary-container: #FFD8E4;
+            --md-sys-color-error-container: #8C1D18;
+            --md-sys-color-on-error-container: #F9DEDC;
+            --md-sys-color-surface: #141218;
+            --md-sys-color-surface-container-high: #2B2930;
+            --md-sys-color-surface-container-highest: #36343B;
+            --md-sys-color-on-surface: #E6E1E5;
+            --md-sys-color-on-surface-variant: #CAC4D0;
+            --md-sys-color-outline-variant: #49454F;
+        }
+    }
+
+    /* Streamlit UI Anpassung */
+    header, footer, [data-testid="stHeader"] { display: none !important; }
+    
+    html, body, [class*="css"] {
+        font-family: 'Google Sans', sans-serif;
+    }
+
+    .stApp {
+        background: var(--md-sys-color-surface);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        min-height: 100dvh;
+    }
+
+    /* Dynamische Container-Anpassung basierend auf Fenster-Breite UND -Höhe */
+    .main .block-container {
+        width: min(92vw, calc(80vh * 0.65));
+        max-width: 440px;
+        margin: auto;
+        padding: clamp(0.75rem, 2vh, 1.5rem);
+        background: var(--md-sys-color-surface-container-high);
+        border-radius: clamp(24px, 4vw, 36px);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--md-sys-color-outline-variant);
+    }
+
+    .md-titel {
+        font-size: clamp(1rem, 2.5vh, 1.3rem);
+        font-weight: 500;
+        color: var(--md-sys-color-on-surface);
+        margin-bottom: clamp(0.5rem, 1.5vh, 1rem);
+        text-align: center;
+        letter-spacing: 0.01em;
+    }
+
+    /* M3 Surface Container Display */
+    .md-display {
+        background: var(--md-sys-color-surface-container-highest);
+        color: var(--md-sys-color-on-surface);
+        border-radius: clamp(18px, 3.5vw, 24px);
+        padding: clamp(0.75rem, 2vh, 1.25rem) clamp(1rem, 3vw, 1.5rem);
+        margin-bottom: clamp(0.75rem, 2vh, 1.25rem);
+        text-align: right;
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
+    }
+    
+    .md-display .ausdruck-zeile {
+        font-size: clamp(0.8rem, 2vh, 1rem);
+        color: var(--md-sys-color-on-surface-variant);
+        min-height: 1.4em;
+    }
+    
+    .md-display .ergebnis-zeile {
+        font-size: clamp(1.8rem, 5vh, 2.8rem);
+        font-weight: 500;
+        line-height: 1.1;
+    }
+
+    /* M3 Dynamic State Layer Buttons */
+    div.stButton > button {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        height: auto;
+        border-radius: clamp(16px, 3.5vw, 28px);
+        border: none;
+        font-family: 'Google Sans', sans-serif;
+        font-size: clamp(1rem, 3vh, 1.4rem);
+        font-weight: 500;
+        color: var(--md-sys-color-on-surface);
+        background: var(--md-sys-color-surface-container-highest);
+        transition: transform 0.15s var(--md-sys-motion-easing), 
+                    filter 0.2s var(--md-sys-motion-easing),
+                    border-radius 0.2s var(--md-sys-motion-easing);
+    }
+
+    div.stButton > button:hover {
+        filter: brightness(0.92);
+        border: none;
+        border-radius: clamp(12px, 2.5vw, 20px);
+    }
+
+    div.stButton > button:active {
+        transform: scale(0.92);
+    }
+
+    div.stButton > button:focus:not(:active) {
+        border: none;
+        outline: 2px solid var(--md-sys-color-primary);
+    }
+
+    /* Tonal Color Mapping */
+    div[class*="st-key-num-key"] div.stButton > button {
+        background: var(--md-sys-color-secondary-container);
+        color: var(--md-sys-color-on-secondary-container);
+    }
+
+    div[class*="st-key-op-key"] div.stButton > button {
+        background: var(--md-sys-color-primary-container);
+        color: var(--md-sys-color-on-primary-container);
+        font-weight: 700;
+    }
+
+    div[class*="st-key-equals-key"] div.stButton > button {
+        background: var(--md-sys-color-primary);
+        color: var(--md-sys-color-on-primary);
+        font-weight: 700;
+        border-radius: clamp(18px, 4vw, 32px);
+    }
+
+    div[class*="st-key-func-key"] div.stButton > button {
+        background: var(--md-sys-color-tertiary-container);
+        color: var(--md-sys-color-on-tertiary-container);
+    }
+
+    div[class*="st-key-clear-key"] div.stButton > button {
+        background: var(--md-sys-color-error-container);
+        color: var(--md-sys-color-on-error-container);
+    }
+
+    /* Raster-Layout für mobile und Desktop-Fenster */
+    div[data-testid="stHorizontalBlock"] {
+        flex-direction: row !important;
+        gap: clamp(4px, 1.2vh, 10px) !important;
+        margin-bottom: clamp(4px, 1.2vh, 10px);
+    }
+
+    div[data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        padding: 0 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-# Custom CSS für Material Design Look
-st.markdown("""
-<style>
-/* Hauptcontainer */
-.calculator-container {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 24px;
-    padding: 24px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    max-width: 400px;
-    margin: 0 auto;
-}
+st.markdown('<div class="md-titel">🧮 Taschenrechner</div>', unsafe_allow_html=True)
 
-/* Display Bereich */
-.display-container {
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
+# Display[cite: 1]
+st.markdown(
+    f"""
+    <div class="md-display">
+        <div class="ausdruck-zeile">{st.session_state.ausdruck or "&nbsp;"}</div>
+        <div class="ergebnis-zeile">{st.session_state.anzeige}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-.display-value {
-    font-size: 48px;
-    font-weight: 300;
-    text-align: right;
-    color: #333;
-    min-height: 60px;
-    word-wrap: break-word;
-    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
-}
+# Tasten-Grid[cite: 1]
+tastenreihen = [
+    [("C", "clear-key"), ("←", "func-key"), ("%", "func-key"), ("÷", "op-key")],
+    [("7", "num-key"), ("8", "num-key"), ("9", "num-key"), ("×", "op-key")],
+    [("4", "num-key"), ("5", "num-key"), ("6", "num-key"), ("-", "op-key")],
+    [("1", "num-key"), ("2", "num-key"), ("3", "num-key"), ("+", "op-key")],
+    [("±", "func-key"), ("0", "num-key"), (",", "num-key"), ("=", "equals-key")],
+]
 
-.display-expression {
-    font-size: 14px;
-    color: #666;
-    text-align: right;
-    min-height: 20px;
-    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-/* Button Grid */
-.button-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-}
-
-/* Button Styling */
-.stButton > button {
-    border: none !important;
-    border-radius: 16px !important;
-    padding: 20px 0 !important;
-    font-size: 24px !important;
-    font-weight: 500 !important;
-    transition: all 0.2s ease !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
-    height: 70px !important;
-    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
-}
-
-.stButton > button:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
-}
-
-.stButton > button:active {
-    transform: translateY(0) !important;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15) !important;
-}
-
-/* Zahl Buttons - Light */
-.btn-number {
-    background: #ffffff !important;
-    color: #333333 !important;
-}
-
-.btn-number:hover {
-    background: #f5f5f5 !important;
-}
-
-/* Operator Buttons - Primary Color */
-.btn-operator {
-    background: #3f51b5 !important;
-    color: #ffffff !important;
-}
-
-.btn-operator:hover {
-    background: #303f9f !important;
-}
-
-/* Funktion Buttons - Secondary */
-.btn-function {
-    background: #e0e0e0 !important;
-    color: #333333 !important;
-}
-
-.btn-function:hover {
-    background: #d0d0d0 !important;
-}
-
-/* Equals Button - Accent */
-.btn-equals {
-    background: #ff4081 !important;
-    color: #ffffff !important;
-}
-
-.btn-equals:hover {
-    background: #f50057 !important;
-}
-
-/* Zero Button - Spans 2 columns */
-.btn-zero {
-    grid-column: span 2 !important;
-}
-
-/* Responsive Anpassungen */
-@media (max-width: 480px) {
-    .calculator-container {
-        padding: 16px;
-        border-radius: 16px;
-    }
-
-    .display-value {
-        font-size: 36px !important;
-    }
-
-    .stButton > button {
-        padding: 16px 0 !important;
-        height: 60px !important;
-        font-size: 20px !important;
-    }
-
-    .button-grid {
-        gap: 8px;
-    }
-}
-
-@media (min-width: 768px) {
-    .calculator-container {
-        max-width: 450px;
-        padding: 32px;
-    }
-
-    .display-value {
-        font-size: 56px !important;
-    }
-
-    .stButton > button {
-        height: 80px !important;
-        font-size: 28px !important;
-    }
-}
-
-/* Hide Streamlit Branding */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
-
-# Session State Initialisierung
-if 'current_value' not in st.session_state:
-    st.session_state.current_value = '0'
-if 'expression' not in st.session_state:
-    st.session_state.expression = ''
-if 'last_was_result' not in st.session_state:
-    st.session_state.last_was_result = False
-
-def calculate_expression(expr):
-    """Berechnet einen mathematischen Ausdruck sicher."""
-    try:
-        # Ersetze visuelle Operatoren durch Python-Operatoren
-        expr = expr.replace('×', '*').replace('÷', '/')
-        # Evaluiere den Ausdruck (nur Zahlen und Operatoren erlaubt)
-        result = eval(expr)
-        # Runde auf maximale 10 Dezimalstellen
-        if isinstance(result, float):
-            result = round(result, 10)
-            # Entferne unnötige Nullen nach dem Komma
-            if result == int(result):
-                result = int(result)
-        return str(result)
-    except:
-        return 'Error'
-
-def add_digit(digit):
-    """Fügt eine Ziffer zum aktuellen Wert hinzu."""
-    if st.session_state.last_was_result:
-        st.session_state.current_value = digit
-        st.session_state.expression = ''
-        st.session_state.last_was_result = False
-    else:
-        if st.session_state.current_value == '0' and digit != '.':
-            st.session_state.current_value = digit
-        elif digit == '.' and '.' in st.session_state.current_value:
-            pass  # Verhindere mehrere Dezimalpunkte
-        else:
-            st.session_state.current_value += digit
-
-def add_operator(op):
-    """Fügt einen Operator zur Expression hinzu."""
-    current = st.session_state.current_value
-
-    if st.session_state.last_was_result:
-        st.session_state.expression = current + ' ' + op + ' '
-        st.session_state.last_was_result = False
-    else:
-        if st.session_state.expression:
-            st.session_state.expression = st.session_state.expression.rstrip() + ' ' + op + ' '
-        else:
-            st.session_state.expression = current + ' ' + op + ' '
-
-    st.session_state.current_value = '0'
-
-def calculate():
-    """Berechnet das Ergebnis der aktuellen Expression."""
-    if st.session_state.expression:
-        full_expr = st.session_state.expression + st.session_state.current_value
-        result = calculate_expression(full_expr)
-        st.session_state.expression = ''
-        st.session_state.current_value = result
-        st.session_state.last_was_result = True
-
-def clear():
-    """Setzt den Rechner zurück."""
-    st.session_state.current_value = '0'
-    st.session_state.expression = ''
-    st.session_state.last_was_result = False
-
-def delete_last():
-    """Löscht das letzte Zeichen."""
-    if st.session_state.last_was_result:
-        clear()
-    else:
-        if len(st.session_state.current_value) > 1:
-            st.session_state.current_value = st.session_state.current_value[:-1]
-        else:
-            st.session_state.current_value = '0'
-
-def toggle_sign():
-    """Wechselt das Vorzeichen."""
-    if st.session_state.current_value != '0':
-        if st.session_state.current_value.startswith('-'):
-            st.session_state.current_value = st.session_state.current_value[1:]
-        else:
-            st.session_state.current_value = '-' + st.session_state.current_value
-
-def percentage():
-    """Berechnet Prozent."""
-    try:
-        value = float(st.session_state.current_value)
-        result = value / 100
-        if result == int(result):
-            st.session_state.current_value = str(int(result))
-        else:
-            st.session_state.current_value = str(round(result, 10))
-    except:
-        pass
-
-# UI Layout
-st.markdown('<div class="calculator-container">', unsafe_allow_html=True)
-
-# Display
-st.markdown(f"""
-<div class="display-container">
-    <div class="display-expression">{st.session_state.expression}</div>
-    <div class="display-value">{st.session_state.current_value}</div>
-</div>
-""", unsafe_allow_html=True)
-
-# Button Grid mit unique Keys
-col1, col2, col3, col4 = st.columns(4, gap="small")
-
-with col1:
-    if st.button("C", key="btn_c", use_container_width=True):
-        clear()
-    if st.button("%", key="btn_percent", use_container_width=True):
-        percentage()
-    if st.button("±", key="btn_sign", use_container_width=True):
-        toggle_sign()
-    if st.button("÷", key="btn_div", use_container_width=True):
-        add_operator('÷')
-
-with col2:
-    if st.button("7", key="btn_7", use_container_width=True):
-        add_digit('7')
-    if st.button("8", key="btn_8", use_container_width=True):
-        add_digit('8')
-    if st.button("9", key="btn_9", use_container_width=True):
-        add_digit('9')
-    if st.button("×", key="btn_mul", use_container_width=True):
-        add_operator('×')
-
-with col3:
-    if st.button("4", key="btn_4", use_container_width=True):
-        add_digit('4')
-    if st.button("5", key="btn_5", use_container_width=True):
-        add_digit('5')
-    if st.button("6", key="btn_6", use_container_width=True):
-        add_digit('6')
-    if st.button("−", key="btn_sub", use_container_width=True):
-        add_operator('-')
-
-with col4:
-    if st.button("1", key="btn_1", use_container_width=True):
-        add_digit('1')
-    if st.button("2", key="btn_2", use_container_width=True):
-        add_digit('2')
-    if st.button("3", key="btn_3", use_container_width=True):
-        add_digit('3')
-    if st.button("+", key="btn_add", use_container_width=True):
-        add_operator('+')
-
-# Zweite Reihe von Buttons
-col1, col2, col3, col4 = st.columns(4, gap="small")
-
-with col1:
-    if st.button("⌫", key="btn_delete", use_container_width=True):
-        delete_last()
-with col2:
-    if st.button("0", key="btn_0", use_container_width=True):
-        add_digit('0')
-with col3:
-    if st.button(".", key="btn_dot", use_container_width=True):
-        add_digit('.')
-with col4:
-    if st.button("=", key="btn_equals", use_container_width=True):
-        calculate()
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Footer mit kleiner Info
-st.markdown("""
-<style>
-.footer-info {
-    text-align: center;
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 12px;
-    margin-top: 20px;
-    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-</style>
-<div class="footer-info">Material Design Taschenrechner • Streamlit</div>
-""", unsafe_allow_html=True)
+for r_idx, reihe in enumerate(tastenreihen):
+    spalten = st.columns(4)
+    for c_idx, (spalte, (taste, css_klasse)) in enumerate(zip(spalten, reihe)):
+        with spalte:
+            with st.container(key=f"{css_klasse}-{r_idx}-{c_idx}"):
+                st.button(
+                    taste,
+                    key=f"btn_{r_idx}_{c_idx}",
+                    on_click=taste_gedrueckt,
+                    args=(taste,),
+                )
