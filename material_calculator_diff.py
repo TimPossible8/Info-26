@@ -1,7 +1,4 @@
---- material_calculator.py (原始)
 
-
-+++ material_calculator.py (修改后)
 import streamlit as st
 
 # Seitenkonfiguration
