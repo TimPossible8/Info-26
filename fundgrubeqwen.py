@@ -46,8 +46,6 @@ BILDORDNER = BASE / "fundgrubebilder"
 BILDORDNER.mkdir(parents=True, existok=True)
 DBDATEI = BASE / "fundgrubedb.json"
 
-KI-Modell: CLIP Zero-Shot (echt) mit Fallbacks
-
 KATEGORIE_LABELS = {
     "a photo of a sweater or pullover": "Pullover",
     "a photo of a jacket or coat": "Jacke",
@@ -160,7 +158,6 @@ def ki_scan(image):
     return {"kategorie": kategorie, "konfidenz": round(float(konf), 2),
             "farben": farben, "muster": muster, "tags": tags[:6], "modell": art or "Farbanalyse"}
 
-Datenbank (JSON) + Startdaten
 
 SEED = [
     dict(id="seed-1", name="Beiger Strickpullover", art="gefunden", kategorie="Pullover",
@@ -246,9 +243,7 @@ def karte(item, key):
             st.session_state.selected = item["id"]
             navigate("detail")
         st.markdown("", unsafeallowhtml=True)
-
-Seite: START
-
+        
 if st.session_state.page == "home":
     st.markdown("🔍 Fundgrube", unsafeallowhtml=True)
     st.markdown("Virtuelles Fundbüro – Verlorenes wiederfinden & Funde melden",
@@ -293,7 +288,7 @@ if st.session_state.page == "home":
         if st.button("↑ Fund melden", type="primary", usecontainerwidth=True):
             navigate("hochladen")
 
-Seite: SUCHEN
+
 
 elif st.session_state.page == "suchen":
     if st.button("↩ Zurück"):
@@ -326,7 +321,7 @@ elif st.session_state.page == "suchen":
     else:
         st.info("Kein Treffer – vielleicht magst du selbst einen Fund melden?")
 
-Seite: HOCHLADEN
+
 
 elif st.session_state.page == "hochladen":
     if st.button("↩ Zurück"):
@@ -385,7 +380,7 @@ elif st.session_state.page == "hochladen":
     else:
         st.info("Bitte lade ein Foto hoch – die KI erkennt automatisch Kategorie, Farben & Muster.")
 
-Seite: DETAIL
+
 
 elif st.session_state.page == "detail":
     if st.button("↩ Zurück"):
