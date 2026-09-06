@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Fundgrube – Secondhand-App mit KI-Tags</title>
+<title>Fundgrube  Secondhand-App mit KI-Tags</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/poppins@latest/latin-400-normal.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/poppins@latest/latin-500-normal.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/poppins@latest/latin-600-normal.css">
