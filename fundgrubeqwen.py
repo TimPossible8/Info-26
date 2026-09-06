@@ -1,4 +1,3 @@
--- coding: utf-8 --
 """
 Fundgrube – Virtuelles Fundbüro (Streamlit + echtes KI-Modell)
 ================================================================
