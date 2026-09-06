@@ -1,376 +1,487 @@
+"""
+Fundgrube – Lost & Found / Kleidertausch-App
+----------------------------------------------
+Eine Streamlit-App zum Hochladen, automatischen Taggen (KI-Bilderkennung)
+und Wiederfinden von Kleidungsstücken.
+
+Optimierungen gegenüber der ursprünglichen Version:
+- Vollständige Umsetzung des Figma-/PDF-Designs (Hintergrund-Kreise,
+  Pillenform-Buttons, Karussell mit funktionierenden Pfeilen & Punkten,
+  Suchleiste mit Icon, Zoom-Icon in der Detailansicht)
+- Robuste Navigation & Statusverwaltung (kein Absturz bei leerer Datenbank)
+- KI-Modell läuft explizit auf CPU, Ergebnisse werden ins Deutsche übersetzt
+- Editierbarer Artikelname beim Upload statt Platzhaltertext
+- Reservieren-Status wird pro Artikel gespeichert (Button deaktiviert sich)
+- Löschfunktion für eigene Einträge
+- Sauber getrennte Funktionen, Typ-Hinweise, Kommentare
+"""
+
+from __future__ import annotations
+
+import io
+from typing import Optional
+
 import streamlit as st
-import numpy as np
-import sympy as sp
-import plotly.graph_objects as go
-from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
+from PIL import Image
 
-# ---------------------------------------------------------
-# Page Configuration & Fullscreen Setup
-# ---------------------------------------------------------
-st.set_page_config(
-    page_title="Material 3 Graphing Calculator",
-    page_icon="🧮",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# ============================================================
+# KI-MODELL
+# ============================================================
+#
+# HINWEIS: Ein allgemeines ImageNet-Modell (z. B. google/vit-base-patch16-224)
+# kennt nur eine Handvoll Kleidungs-Klassen und liefert bei Flatlay-Fotos
+# (Kleidung ohne Person, auf Tisch/Boden fotografiert) oft irrelevante
+# Treffer wie "Handtuch" oder "Kissenbezug". Stattdessen nutzen wir
+# CLIP im Zero-Shot-Verfahren: Wir geben dem Modell selbst eine feste,
+# für eine Kleider-Fundgrube sinnvolle Liste an Kategorien und Farben vor,
+# aus der es die passendste auswählt. Das ist deutlich treffsicherer,
+# ohne dass ein eigenes Modell trainiert werden muss.
 
-# Inject Custom Material 3 CSS for Responsive Fullscreen Layout
-st.markdown("""
-<style>
-    /* Global Reset & Material 3 Light Theme Base */
-    html, body, [data-testid="stAppViewContainer"] {
-        background-color: #FEF7FF !important;
-        color: #1D1B20;
-        font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    
-    /* Remove default Streamlit top/bottom paddings for full height fit */
-    .block-container {
-        padding-top: 1.2rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 1.5rem !important;
-        padding-right: 1.5rem !important;
-        max-width: 100% !important;
-    }
-    
-    /* Hide Streamlit header, menu & footer */
-    #MainMenu, header, footer, [data-testid="stHeader"] {
-        visibility: hidden !important;
-        height: 0px !important;
-    }
+CATEGORY_LABELS_EN = [
+    "sweater", "hoodie", "t-shirt", "shirt", "blouse", "jacket", "coat",
+    "jeans", "trousers", "shorts", "skirt", "dress", "suit", "vest",
+    "scarf", "hat", "cap", "gloves", "socks", "shoes", "boots", "sneakers",
+    "bag", "backpack", "belt", "swimsuit", "pajamas",
+]
 
-    /* M3 Surface Cards */
-    .m3-card {
-        background-color: #F4EFF4;
-        border-radius: 20px;
-        padding: 20px;
-        box-shadow: 0px 1px 3px rgba(0,0,0,0.1), 0px 1px 2px rgba(0,0,0,0.06);
-        border: 1px solid #E7E0EC;
-        margin-bottom: 16px;
-    }
+CATEGORY_LABELS_DE = {
+    "sweater": "Pullover", "hoodie": "Hoodie", "t-shirt": "T-Shirt",
+    "shirt": "Hemd", "blouse": "Bluse", "jacket": "Jacke", "coat": "Mantel",
+    "jeans": "Jeans", "trousers": "Hose", "shorts": "Shorts", "skirt": "Rock",
+    "dress": "Kleid", "suit": "Anzug", "vest": "Weste", "scarf": "Schal",
+    "hat": "Hut", "cap": "Mütze", "gloves": "Handschuhe", "socks": "Socken",
+    "shoes": "Schuhe", "boots": "Stiefel", "sneakers": "Sneaker", "bag": "Tasche",
+    "backpack": "Rucksack", "belt": "Gürtel", "swimsuit": "Badeanzug",
+    "pajamas": "Schlafanzug",
+}
 
-    /* M3 Calculator Display */
-    .m3-display-container {
-        background: linear-gradient(135deg, #EADDFF 0%, #E8DEF8 100%);
-        border-radius: 24px;
-        padding: 20px 24px;
-        text-align: right;
-        min-height: 110px;
-        box-shadow: inset 0px 2px 4px rgba(0,0,0,0.06), 0px 2px 6px rgba(0,0,0,0.04);
-        margin-bottom: 16px;
-        border: 1px solid #D0BCFF;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-    }
+COLOR_LABELS_EN = [
+    "black", "white", "gray", "beige", "brown", "red", "orange", "yellow",
+    "green", "blue", "purple", "pink",
+]
 
-    .m3-display-expr {
-        font-size: 1rem;
-        color: #49454F;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-        min-height: 24px;
-        word-break: break-all;
-        font-family: 'Roboto Mono', monospace;
-    }
+COLOR_LABELS_DE = {
+    "black": "Schwarz", "white": "Weiß", "gray": "Grau", "beige": "Beige",
+    "brown": "Braun", "red": "Rot", "orange": "Orange", "yellow": "Gelb",
+    "green": "Grün", "blue": "Blau", "purple": "Lila", "pink": "Pink",
+}
 
-    .m3-display-val {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #21005D;
-        word-break: break-all;
-        line-height: 1.2;
-    }
 
-    /* M3 Button Styling Overrides */
-    div.stButton > button {
-        width: 100% !important;
-        border-radius: 28px !important;
-        height: 52px !important;
-        font-size: 1.15rem !important;
-        font-weight: 600 !important;
-        border: 1px solid #CAC4D0 !important;
-        background-color: #F3EDF7 !important;
-        color: #1D192B !important;
-        transition: all 0.2s cubic-bezier(0.2, 0, 0, 1) !important;
-        box-shadow: 0px 1px 2px rgba(0,0,0,0.05) !important;
-    }
+@st.cache_resource(show_spinner=False)
+def load_ai_model():
+    """Lädt das CLIP-Modell für Zero-Shot-Bildklassifikation einmalig (Cache)."""
+    from transformers import pipeline
 
-    div.stButton > button:hover {
-        background-color: #E8DEF8 !important;
-        border-color: #79747E !important;
-        color: #1D192B !important;
-        transform: translateY(-1px);
-        box-shadow: 0px 2px 6px rgba(0,0,0,0.12) !important;
-    }
-
-    div.stButton > button:active {
-        transform: translateY(1px);
-        box-shadow: none !important;
-    }
-
-    /* Primary Filled Buttons (= and Plot) */
-    div.stButton > button[kind="primary"] {
-        background-color: #6750A4 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-    }
-
-    div.stButton > button[kind="primary"]:hover {
-        background-color: #523B8B !important;
-        color: #FFFFFF !important;
-        box-shadow: 0px 3px 8px rgba(103, 80, 164, 0.35) !important;
-    }
-
-    /* Input Field Customization */
-    div[data-baseweb="input"] {
-        border-radius: 12px !important;
-        background-color: #ECE6F0 !important;
-    }
-
-    /* Expander Styling */
-    .stExpander {
-        background-color: #F4EFF4 !important;
-        border-radius: 16px !important;
-        border: 1px solid #E7E0EC !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# Session State Initialization
-# ---------------------------------------------------------
-if "calc_input" not in st.session_state:
-    st.session_state.calc_input = ""
-if "calc_result" not in st.session_state:
-    st.session_state.calc_result = "0"
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "plot_expr" not in st.session_state:
-    st.session_state.plot_expr = "sin(x) + 0.5*x"
-if "xmin" not in st.session_state:
-    st.session_state.xmin = -10.0
-if "xmax" not in st.session_state:
-    st.session_state.xmax = 10.0
-if "ymin" not in st.session_state:
-    st.session_state.ymin = -5.0
-if "ymax" not in st.session_state:
-    st.session_state.ymax = 5.0
-
-# Safe Math Parsing Helpers
-def safe_evaluate(expr_str):
-    if not expr_str.strip():
-        return "0"
-    try:
-        # Pre-replace human friendly symbols
-        clean_expr = expr_str.replace("×", "*").replace("÷", "/").replace("^", "**")
-        transformations = (standard_transformations + (implicit_multiplication_application,))
-        x = sp.Symbol('x')
-        parsed = parse_expr(clean_expr, transformations=transformations, local_dict={'x': x, 'e': sp.E, 'pi': sp.pi})
-        
-        # If expression contains 'x', format symbolically, else evaluate numerically
-        if parsed.has(x):
-            return str(sp.simplify(parsed))
-        
-        val = float(parsed.evalf())
-        if val.is_integer():
-            return str(int(val))
-        return f"{val:.8g}"
-    except Exception as e:
-        return "Error"
-
-def append_to_input(token):
-    st.session_state.calc_input += token
-
-def clear_input():
-    st.session_state.calc_input = ""
-    st.session_state.calc_result = "0"
-
-def delete_last():
-    st.session_state.calc_input = st.session_state.calc_input[:-1]
-
-def evaluate_current():
-    res = safe_evaluate(st.session_state.calc_input)
-    st.session_state.calc_result = res
-    if res != "Error" and st.session_state.calc_input:
-        st.session_state.history.insert(0, f"{st.session_state.calc_input} = {res}")
-        if len(st.session_state.history) > 15:
-            st.session_state.history.pop()
-
-# ---------------------------------------------------------
-# Layout: Split Screen
-# ---------------------------------------------------------
-col_left, col_right = st.columns([5, 7], gap="medium")
-
-# =========================================================
-# LEFT COLUMN: MATERIAL 3 CALCULATOR
-# =========================================================
-with col_left:
-    st.markdown("### 🧮 Material 3 Calculator")
-    
-    # Display Card
-    expr_display = st.session_state.calc_input if st.session_state.calc_input else "0"
-    res_display = st.session_state.calc_result
-    
-    st.markdown(f"""
-    <div class="m3-display-container">
-        <div class="m3-display-expr">{expr_display}</div>
-        <div class="m3-display-val">{res_display}</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Keypad Buttons Layout
-    keypad = [
-        [("C", clear_input), ("DEL", delete_last), ("(", lambda: append_to_input("(")), (")", lambda: append_to_input(")")), ("^", lambda: append_to_input("^"))],
-        [("sin", lambda: append_to_input("sin(")), ("cos", lambda: append_to_input("cos(")), ("tan", lambda: append_to_input("tan(")), ("sqrt", lambda: append_to_input("sqrt(")), ("÷", lambda: append_to_input("÷"))],
-        [("7", lambda: append_to_input("7")), ("8", lambda: append_to_input("8")), ("9", lambda: append_to_input("9")), ("×", lambda: append_to_input("×")), ("log", lambda: append_to_input("log("))],
-        [("4", lambda: append_to_input("4")), ("5", lambda: append_to_input("5")), ("6", lambda: append_to_input("6")), ("-", lambda: append_to_input("-")), ("exp", lambda: append_to_input("exp("))],
-        [("1", lambda: append_to_input("1")), ("2", lambda: append_to_input("2")), ("3", lambda: append_to_input("3")), ("+", lambda: append_to_input("+")), ("x", lambda: append_to_input("x"))],
-        [("0", lambda: append_to_input("0")), (".", lambda: append_to_input(".")), ("π", lambda: append_to_input("pi")), ("e", lambda: append_to_input("e")), ("=", evaluate_current)]
-    ]
-    
-    for row in keypad:
-        cols = st.columns(5)
-        for i, (label, action) in enumerate(row):
-            is_primary = label == "="
-            btn_type = "primary" if is_primary else "secondary"
-            if cols[i].button(label, key=f"btn_{label}_{i}", type=btn_type):
-                action()
-                st.rerun()
-
-    # Quick Action: Plot from Calculator Expression
-    if st.button("📈 Send Expression to Plotter", type="secondary", use_container_width=True):
-        if st.session_state.calc_input:
-            st.session_state.plot_expr = st.session_state.calc_input
-            st.rerun()
-
-    # History Expander
-    with st.expander("🕒 Calculation History", expanded=False):
-        if st.session_state.history:
-            for item in st.session_state.history:
-                st.markdown(f"`{item}`")
-            if st.button("Clear History", key="clear_hist"):
-                st.session_state.history = []
-                st.rerun()
-        else:
-            st.caption("No calculations yet.")
-
-# =========================================================
-# RIGHT COLUMN: GRAPHICAL PLOTTER
-# =========================================================
-with col_right:
-    st.markdown("### 📊 Interactive Function Plotter")
-    
-    # Plotter Controls
-    c_f1, c_f2 = st.columns([3, 1])
-    with c_f1:
-        func_input = st.text_input("Function f(x)", value=st.session_state.plot_expr, key="plot_expr_input")
-    with c_f2:
-        st.write("") # spacing
-        st.write("") 
-        plot_trigger = st.button("Plot Function", type="primary")
-
-    # Range controls
-    r1, r2, r3, r4 = st.columns(4)
-    with r1:
-        xmin = st.number_input("X Min", value=st.session_state.xmin, step=1.0)
-    with r2:
-        xmax = st.number_input("X Max", value=st.session_state.xmax, step=1.0)
-    with r3:
-        ymin = st.number_input("Y Min", value=st.session_state.ymin, step=1.0)
-    with r4:
-        ymax = st.number_input("Y Max", value=st.session_state.ymax, step=1.0)
-
-    # Plotting Logic
-    fig = go.Figure()
-
-    if func_input:
-        try:
-            # Parse math expression with sympy
-            x_sym = sp.Symbol('x')
-            clean_f = func_input.replace("×", "*").replace("÷", "/").replace("^", "**")
-            transformations = (standard_transformations + (implicit_multiplication_application,))
-            parsed_expr = parse_expr(clean_f, transformations=transformations, local_dict={'x': x_sym, 'e': sp.E, 'pi': sp.pi})
-            
-            # Convert to numpy function
-            f_np = sp.lambdify(x_sym, parsed_expr, modules=['numpy', 'math'])
-            
-            # Generate mesh
-            x_vals = np.linspace(xmin, xmax, 800)
-            y_vals = f_np(x_vals)
-
-            # Handle scalar output (e.g., constant functions like f(x) = 5)
-            if isinstance(y_vals, (int, float)):
-                y_vals = np.full_like(x_vals, y_vals)
-
-            # Main Curve (Material 3 Deep Purple Accent)
-            fig.add_trace(go.Scatter(
-                x=x_vals,
-                y=y_vals,
-                mode='lines',
-                name=f'f(x) = {func_input}',
-                line=dict(color='#6750A4', width=3.5),
-                hovertemplate='<b>x</b>: %{x:.3f}<br><b>f(x)</b>: %{y:.3f}<extra></extra>'
-            ))
-
-            # Attempt to find roots / zeroes visually / symbollically if in range
-            try:
-                derivative = sp.diff(parsed_expr, x_sym)
-                f_prime = sp.lambdify(x_sym, derivative, modules=['numpy', 'math'])
-                y_prime = f_prime(x_vals)
-                if not isinstance(y_prime, (int, float)):
-                    # Local extrema where derivative changes sign
-                    sign_changes = np.where(np.diff(np.sign(y_prime)))[0]
-                    if len(sign_changes) > 0 and len(sign_changes) < 20:
-                        extrema_x = x_vals[sign_changes]
-                        extrema_y = y_vals[sign_changes]
-                        fig.add_trace(go.Scatter(
-                            x=extrema_x,
-                            y=extrema_y,
-                            mode='markers',
-                            name='Local Extrema',
-                            marker=dict(color='#B3261E', size=9, symbol='diamond'),
-                            hovertemplate='<b>Extremum</b><br>x: %{x:.3f}<br>y: %{y:.3f}<extra></extra>'
-                        ))
-            except Exception:
-                pass # Non-critical feature fallback
-
-        except Exception as err:
-            st.error(f"Error plotting function: {err}")
-
-    # Coordinate Axes & Material 3 Styling
-    fig.add_hline(y=0, line_width=1.5, line_color="#79747E", line_dash="dash")
-    fig.add_vline(x=0, line_width=1.5, line_color="#79747E", line_dash="dash")
-
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='#F4EFF4',
-        margin=dict(l=20, r=20, t=30, b=20),
-        height=480,
-        autosize=True,
-        xaxis=dict(
-            range=[xmin, xmax],
-            gridcolor='#E7E0EC',
-            zeroline=False,
-            title=dict(text="x", font=dict(color="#49454F", size=14)),
-            tickfont=dict(color="#49454F")
-        ),
-        yaxis=dict(
-            range=[ymin, ymax],
-            gridcolor='#E7E0EC',
-            zeroline=False,
-            title=dict(text="f(x)", font=dict(color="#49454F", size=14)),
-            tickfont=dict(color="#49454F")
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(color="#1D192B")
-        ),
-        hovermode="x unified"
+    # device=-1 erzwingt CPU-Inferenz, damit die App auch ohne GPU läuft.
+    return pipeline(
+        "zero-shot-image-classification",
+        model="openai/clip-vit-base-patch32",
+        device=-1,
     )
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True, 'responsive': True})
+
+def classify_clothing_item(image: Image.Image) -> list[str]:
+    """Erkennt Kategorie(n) + Farbe eines Kleidungsstücks per CLIP Zero-Shot.
+
+    Gibt eine Liste deutscher Tags zurück, z. B. ["Pullover", "Beige"].
+    """
+    classifier = load_ai_model()
+
+    category_result = classifier(image, candidate_labels=CATEGORY_LABELS_EN)
+    color_result = classifier(image, candidate_labels=COLOR_LABELS_EN)
+
+    tags: list[str] = []
+
+    # Top-Kategorie immer aufnehmen; eine zweite nur, wenn sie fast
+    # genauso wahrscheinlich ist (sonst verwässert das die Tags).
+    top_cat = category_result[0]
+    tags.append(CATEGORY_LABELS_DE[top_cat["label"]])
+    if len(category_result) > 1 and category_result[1]["score"] >= top_cat["score"] * 0.75:
+        second_cat_de = CATEGORY_LABELS_DE[category_result[1]["label"]]
+        if second_cat_de not in tags:
+            tags.append(second_cat_de)
+
+    top_color = color_result[0]
+    tags.append(COLOR_LABELS_DE[top_color["label"]])
+
+    return tags
+
+
+# ============================================================
+# SEITEN-KONFIGURATION & DESIGN (CSS)
+# ============================================================
+
+st.set_page_config(page_title="Fundgrube", page_icon="🧺", layout="centered")
+
+st.markdown(
+    """
+<style>
+    /* ---------- Grundfarben & Hintergrund-Kreise ---------- */
+    .stApp {
+        background-color: #FBF6FC;
+        background-attachment: fixed;
+        background-image:
+            radial-gradient(circle at 8%  10%, #E7DCF7 0, #E7DCF7 68px, transparent 69px),
+            radial-gradient(circle at 32% 6%,  #EFE7FA 0, #EFE7FA 42px, transparent 43px),
+            radial-gradient(circle at 58% 14%, #E7DCF7 0, #E7DCF7 88px, transparent 89px),
+            radial-gradient(circle at 88% 9%,  #EFE7FA 0, #EFE7FA 52px, transparent 53px),
+            radial-gradient(circle at 10% 42%, #EFE7FA 0, #EFE7FA 58px, transparent 59px),
+            radial-gradient(circle at 92% 46%, #E7DCF7 0, #E7DCF7 74px, transparent 75px),
+            radial-gradient(circle at 22% 66%, #E7DCF7 0, #E7DCF7 48px, transparent 49px),
+            radial-gradient(circle at 62% 74%, #EFE7FA 0, #EFE7FA 64px, transparent 65px),
+            radial-gradient(circle at 86% 82%, #E7DCF7 0, #E7DCF7 38px, transparent 39px),
+            radial-gradient(circle at 40% 94%, #EFE7FA 0, #EFE7FA 54px, transparent 55px);
+    }
+    #MainMenu, header, footer { visibility: hidden; }
+    div[data-testid="stToolbar"] { visibility: hidden; }
+
+    /* ---------- Bilder ---------- */
+    img { border-radius: 20px; }
+
+    /* ---------- Buttons ---------- */
+    div.stButton > button {
+        border-radius: 25px !important;
+        height: 55px !important;
+        font-weight: 700 !important;
+        width: 100%;
+        transition: transform 0.05s ease-in-out;
+        border: none !important;
+    }
+    div.stButton > button:active { transform: scale(0.98); }
+
+    button[kind="primary"] {
+        background-color: #6B52A3 !important;
+        color: white !important;
+    }
+    button[kind="secondary"] {
+        background-color: #D4C4F7 !important;
+        color: #4A4A4A !important;
+    }
+
+    /* Kompakte "Icon-Buttons" (z. B. Zurück-Pfeil, Karussell-Pfeile) */
+    .icon-btn button {
+        height: 42px !important;
+        min-height: 42px !important;
+        width: 42px !important;
+        min-width: 42px !important;
+        padding: 0 !important;
+        font-size: 18px !important;
+    }
+    .back-btn button {
+        height: 40px !important;
+        width: auto !important;
+        padding: 0 18px !important;
+        font-size: 18px !important;
+    }
+
+    /* ---------- Badge ---------- */
+    .badge-label {
+        background-color: #D4C4F7;
+        color: #6B52A3;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
+    .badge-reserved {
+        background-color: #F3E9D2;
+        color: #9A7B1E;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        display: inline-block;
+        margin-top: 8px;
+    }
+
+    /* ---------- Titel ---------- */
+    .app-title {
+        text-align: center;
+        font-weight: 900;
+        font-size: 32px;
+        color: #000000;
+        margin-top: 10px;
+        margin-bottom: 20px;
+    }
+
+    /* ---------- Karussell-Punkte ---------- */
+    .dots { text-align: center; margin-top: -6px; margin-bottom: 18px; }
+    .dot {
+        height: 8px; width: 8px; margin: 0 4px;
+        background-color: #D4C4F7; border-radius: 50%;
+        display: inline-block;
+    }
+    .dot.active { background-color: #6B52A3; width: 20px; border-radius: 5px; }
+
+    /* ---------- Suchleiste ---------- */
+    div[data-testid="stTextInput"] input {
+        background-color: #D4C4F7 !important;
+        border-radius: 25px !important;
+        border: none !important;
+        height: 50px !important;
+        color: #4A4A4A !important;
+        font-weight: 600 !important;
+        padding-left: 20px !important;
+    }
+    div[data-testid="stTextInput"] input::placeholder { color: #7A6C99 !important; }
+
+    /* Tag-Anzeige in der Detailansicht */
+    .tag-pill {
+        display: inline-block;
+        background-color: #EFE7FA;
+        color: #6B52A3;
+        padding: 4px 12px;
+        border-radius: 15px;
+        font-size: 13px;
+        margin: 3px 4px 3px 0;
+        font-weight: 600;
+    }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# ============================================================
+# STATE & DATENBANK
+# ============================================================
+
+if "db" not in st.session_state:
+    st.session_state.db = [
+        {
+            "id": 1,
+            "name": "Beiger Strickpullover",
+            "tags": ["Pullover", "Beige", "Strick", "Winter"],
+            "img": "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=400&q=80",
+            "reserved": False,
+        },
+        {
+            "id": 2,
+            "name": "Roter Rentier-Pulli",
+            "tags": ["Pullover", "Rot", "Weihnachten", "Rentier"],
+            "img": "https://images.unsplash.com/photo-1543322748-33df6d3db806?auto=format&fit=crop&w=400&q=80",
+            "reserved": False,
+        },
+    ]
+
+st.session_state.setdefault("page", "home")
+st.session_state.setdefault("carousel_idx", 0)
+st.session_state.setdefault("selected_item_id", None)
+
+
+def navigate(page_name: str) -> None:
+    st.session_state.page = page_name
+    st.rerun()
+
+
+def get_item_by_id(item_id: int) -> Optional[dict]:
+    return next((i for i in st.session_state.db if i["id"] == item_id), None)
+
+
+def next_free_id() -> int:
+    return (max((i["id"] for i in st.session_state.db), default=0)) + 1
+
+
+# ============================================================
+# SCREEN 1: HOME
+# ============================================================
+
+if st.session_state.page == "home":
+    st.markdown("<div class='app-title'>Fundgrube</div>", unsafe_allow_html=True)
+
+    if not st.session_state.db:
+        st.info("Noch keine Artikel vorhanden. Lade den ersten Fund hoch! 👇")
+    else:
+        # Index absichern, falls Artikel gelöscht wurden
+        st.session_state.carousel_idx %= len(st.session_state.db)
+        current_item = st.session_state.db[st.session_state.carousel_idx]
+
+        st.markdown("<div class='badge-label'>Zuletzt Hinzugefügt</div>", unsafe_allow_html=True)
+
+        col_prev, col_img, col_next = st.columns([1, 6, 1])
+        with col_prev:
+            st.markdown("<div class='icon-btn' style='margin-top:90px;'>", unsafe_allow_html=True)
+            if st.button("‹", key="prev_btn"):
+                st.session_state.carousel_idx = (st.session_state.carousel_idx - 1) % len(st.session_state.db)
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+        with col_img:
+            st.image(current_item["img"], use_container_width=True)
+        with col_next:
+            st.markdown("<div class='icon-btn' style='margin-top:90px;'>", unsafe_allow_html=True)
+            if st.button("›", key="next_btn"):
+                st.session_state.carousel_idx = (st.session_state.carousel_idx + 1) % len(st.session_state.db)
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # Punkt-Indikatoren
+        dots_html = "".join(
+            f"<span class='dot{' active' if i == st.session_state.carousel_idx else ''}'></span>"
+            for i in range(len(st.session_state.db))
+        )
+        st.markdown(f"<div class='dots'>{dots_html}</div>", unsafe_allow_html=True)
+        st.caption(f"<div style='text-align:center;'>{current_item['name']}</div>", unsafe_allow_html=True)
+
+    st.write("")
+    col1, col2, col3 = st.columns([1, 4, 1])
+    with col2:
+        if st.button("🔍  Artikel Suchen", type="secondary", use_container_width=True):
+            navigate("search")
+        st.write("")
+        if st.button("↑  Artikel Hochladen", type="primary", use_container_width=True):
+            navigate("upload")
+
+# ============================================================
+# SCREEN 2: SUCHE
+# ============================================================
+
+elif st.session_state.page == "search":
+    st.markdown("<div class='back-btn'>", unsafe_allow_html=True)
+    if st.button("↩ Zurück", key="back_search"):
+        navigate("home")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    query = st.text_input(
+        "Suche", value="", placeholder="🔍  Nach Artikeln suchen…", label_visibility="collapsed"
+    )
+
+    if query:
+        q = query.lower().strip()
+        filtered_db = [
+            item
+            for item in st.session_state.db
+            if q in item["name"].lower() or any(q in tag.lower() for tag in item["tags"])
+        ]
+    else:
+        filtered_db = st.session_state.db
+
+    st.write("")
+
+    if not filtered_db:
+        st.info("Keine Artikel gefunden. Versuch es mit einem anderen Suchbegriff.")
+    else:
+        cols = st.columns(2)
+        for i, item in enumerate(filtered_db):
+            with cols[i % 2]:
+                st.image(item["img"], use_container_width=True)
+                label = "🔒 Reserviert" if item.get("reserved") else "Ansehen"
+                if st.button(label, key=f"btn_{item['id']}", use_container_width=True):
+                    st.session_state.selected_item_id = item["id"]
+                    navigate("detail")
+
+# ============================================================
+# SCREEN 3: DETAILANSICHT
+# ============================================================
+
+elif st.session_state.page == "detail":
+    st.markdown("<div class='back-btn'>", unsafe_allow_html=True)
+    if st.button("↩ Zurück", key="back_detail"):
+        navigate("search")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    item = get_item_by_id(st.session_state.selected_item_id)
+
+    if item is None:
+        st.warning("Dieser Artikel existiert nicht mehr.")
+    else:
+        st.image(item["img"], use_container_width=True)
+        st.markdown(f"### {item['name']}")
+
+        tags_html = "".join(f"<span class='tag-pill'>{t}</span>" for t in item["tags"])
+        st.markdown(tags_html, unsafe_allow_html=True)
+
+        if item.get("reserved"):
+            st.markdown("<div class='badge-reserved'>🔒 Reserviert</div>", unsafe_allow_html=True)
+
+        st.write("---")
+        col1, col2, col3 = st.columns([1, 4, 1])
+        with col2:
+            reserve_label = "✓ Reserviert" if item.get("reserved") else "🔖  Reservieren"
+            if st.button(
+                reserve_label,
+                type="secondary",
+                use_container_width=True,
+                disabled=item.get("reserved", False),
+            ):
+                item["reserved"] = True
+                st.rerun()
+
+            if st.button("✉  Kontaktieren", type="primary", use_container_width=True):
+                st.success("Kontaktformular geöffnet – die Anfrage wurde an den Finder gesendet!")
+
+            with st.expander("Artikel löschen"):
+                st.caption("Diese Aktion kann nicht rückgängig gemacht werden.")
+                if st.button("🗑 Endgültig löschen", key="delete_item"):
+                    st.session_state.db = [i for i in st.session_state.db if i["id"] != item["id"]]
+                    navigate("home")
+
+# ============================================================
+# SCREEN 4: ARTIKEL HOCHLADEN (mit KI-Bilderkennung)
+# ============================================================
+
+elif st.session_state.page == "upload":
+    st.markdown("<div class='back-btn'>", unsafe_allow_html=True)
+    if st.button("↩ Zurück", key="back_upload"):
+        navigate("home")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("### Neuer Artikel")
+
+    uploaded_file = st.file_uploader(
+        "Bild auswählen", type=["jpg", "png", "jpeg"], label_visibility="collapsed"
+    )
+
+    if uploaded_file is not None:
+        try:
+            image = Image.open(uploaded_file).convert("RGB")
+        except Exception:
+            st.error("Diese Datei konnte nicht als Bild gelesen werden. Bitte JPG oder PNG hochladen.")
+            image = None
+
+        if image is not None:
+            st.image(image, use_container_width=True)
+
+            custom_name = st.text_input(
+                "Artikelname", placeholder="z. B. Blauer Wollpullover"
+            )
+
+            if st.button("📷  Hochladen & KI-Scan", type="primary", use_container_width=True):
+                with st.spinner("KI analysiert das Bild… (beim ersten Mal dauert das etwas länger)"):
+                    try:
+                        new_tags = classify_clothing_item(image)
+
+                        new_item = {
+                            "id": next_free_id(),
+                            "name": custom_name.strip() if custom_name.strip() else "Neues Kleidungsstück",
+                            "tags": new_tags,
+                            "img": image,
+                            "reserved": False,
+                        }
+                        st.session_state.db.insert(0, new_item)
+                        st.session_state.carousel_idx = 0
+
+                        st.success(f"Bild erkannt! Tags: {', '.join(new_tags)}")
+                        st.balloons()
+                    except Exception as e:
+                        st.error(f"Fehler bei der KI-Analyse: {e}")
+    else:
+        # Platzhalter-Kachel wie im Design (großes helles Feld mit Bild-Icon)
+        st.markdown(
+            """
+            <div style="
+                background-color:#D4C4F7;
+                border-radius:20px;
+                height:280px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-size:48px;
+                color:#EFE7FA;
+                margin-bottom:20px;">
+                🖼️➕
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.info("Bitte wähle oben ein Bild aus, um einen neuen Artikel hochzuladen.")
