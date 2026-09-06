@@ -48,7 +48,7 @@ if st.session_state.page == "home":
     st.markdown("### Zuletzt Hinzugefügt")
     # Zeigt das erste Bild aus der simulierten Datenbank an
     latest_item = st.session_state.mock_db[0]
-    st.image(latest_item["image"], use_column_width=True)
+    st.image(item["image"], use_container_width=True)
     
     st.write("")
     col1, col2, col3 = st.columns([1, 4, 1])
@@ -102,7 +102,7 @@ elif st.session_state.page == "search":
     cols = st.columns(2)
     for i, item in enumerate(results):
         with cols[i % 2]:
-            st.image(item["image"], use_column_width=True)
+            st.image(item["image"], use_container_width=True)
             if st.button(f"Ansehen", key=f"view_{item['id']}"):
                 view_item(item)
             st.write("") # Abstand
@@ -116,7 +116,7 @@ elif st.session_state.page == "detail":
     if not item:
         navigate_to("home")
     
-    st.image(item["image"], use_column_width=True)
+    st.image(item["image"], use_container_width=True)
     st.subheader(item["name"])
     st.caption(f"Erkannte KI-Tags: {', '.join(item['tags'])}")
     
