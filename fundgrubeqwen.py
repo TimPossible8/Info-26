@@ -1,3 +1,13 @@
+# -*- coding: utf-8 -*-
+"""
+Fundgrube – Virtuelles Fundbüro (Streamlit + echtes KI-Modell)
+================================================================
+Installation:
+    pip install streamlit pillow transformers torch torchvision
+Start:
+    streamlit run fundgrube.py
+"""
+
 import json
 import uuid
 from datetime import date
@@ -6,11 +16,16 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image
 
+# --- Seiten-Konfiguration & Design (Lavendel-Design) ---
+st.set_page_config(
+    page_title="Fundgrube – Virtuelles Fundbüro",
+    page_icon="🔍",
+    layout="centered"
+)
 
-st.setpageconfig(pagetitle="Fundgrube – Virtuelles Fundbüro", pageicon="🔍", layout="centered")
-
-st.markdown("""
-
+st.markdown(
+    """
+    <style>
     .stApp { background-color: #F8F5FE; }
     #MainMenu, header, footer { visibility: hidden; }
     img { border-radius: 20px; }
@@ -38,14 +53,18 @@ st.markdown("""
                        font-size:12px; font-weight:700; display:inline-block; }
     .status-zurueckgegeben { background:#E3E3E3; color:#555; padding:3px 12px; border-radius:12px;
                              font-size:12px; font-weight:700; display:inline-block; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-""", unsafeallowhtml=True)
-
-BASE = Path(file).resolve().parent if "file" in globals() else Path.cwd()
+# --- Pfade & Datenbank ---
+BASE = Path(__file__).resolve().parent
 BILDORDNER = BASE / "fundgrubebilder"
-BILDORDNER.mkdir(parents=True, existok=True)
-DBDATEI = BASE / "fundgrubedb.json"
+BILDORDNER.mkdir(parents=True, exist_ok=True)
+DB_DATEI = BASE / "fundgrubedb.json"
 
+# --- KI-Modell: CLIP Zero-Shot mit Fallbacks ---
 KATEGORIE_LABELS = {
     "a photo of a sweater or pullover": "Pullover",
     "a photo of a jacket or coat": "Jacke",
@@ -68,6 +87,7 @@ KATEGORIE_LABELS = {
     "a photo of glasses": "Brille",
     "a photo of a plush toy": "Kuscheltier",
 }
+
 MUSTER_LABELS = {
     "solid single color": "einfarbig",
     "striped pattern": "gestreift",
@@ -76,6 +96,7 @@ MUSTER_LABELS = {
     "animal motif print": "mit Motiv",
     "logo or text print": "mit Aufdruck",
 }
+
 VIT_MAP = [
     ("sweater", "Pullover"), ("jersey", "Pullover"), ("jacket", "Jacke"), ("coat", "Jacke"),
     ("jean", "Hose"), ("trouser", "Hose"), ("dress", "Kleid"), ("skirt", "Rock"),
@@ -84,7 +105,8 @@ VIT_MAP = [
     ("backpack", "Rucksack"), ("bag", "Tasche"), ("umbrella", "Regenschirm"),
     ("watch", "Uhr"), ("wallet", "Portemonnaie"), ("toy", "Kuscheltier"),
 ]
-FARB_RGB = {
+
+FARBEN_RGB = {
     "schwarz": (20, 20, 20), "weiß": (245, 245, 245), "grau": (130, 130, 130),
     "rot": (200, 45, 45), "rosa": (240, 170, 190), "orange": (240, 140, 40),
     "gelb": (240, 210, 60), "grün": (70, 150, 80), "blau": (50, 100, 200),
@@ -92,33 +114,36 @@ FARB_RGB = {
     "türkis": (60, 180, 180),
 }
 
-@st.cacheresource(showspinner=False)
-def ladekimodell():
-    """Lädt ein echtes KI-Modell (CLIP Zero-Shot). Fallbacks: ViT, dann Farbanalyse."""
+# --- KI-Modell laden (cached) ---
+@st.cache_resource(show_spinner=False)
+def lade_ki_modell():
+    """Lädt CLIP Zero-Shot oder ViT als Fallback."""
     try:
         from transformers import pipeline
-        return ("clip", pipeline("zero-shot-image-classification",
-                                 model="openai/clip-vit-base-patch32"))
+        return ("clip", pipeline("zero-shot-image-classification", model="openai/clip-vit-base-patch32"))
     except Exception:
         try:
             from transformers import pipeline
-            return ("vit", pipeline("image-classification",
-                                    model="google/vit-base-patch16-224"))
+            return ("vit", pipeline("image-classification", model="google/vit-base-patch16-224"))
         except Exception:
             return (None, None)
 
+# --- Hilfsfunktionen ---
 def dominante_farben(image, n=2):
+    """Extrahiert dominante Farben aus einem Bild."""
     try:
         klein = image.convert("RGB").resize((48, 48))
         q = klein.quantize(colors=3)
         palette = q.getpalette()
         namen = []
         for _, idx in sorted(q.getcolors(), reverse=True):
-            r, g, b = palette[idx  3:idx  3 + 3]
-            name = min(FARB_RGB.items(),
-                       key=lambda kv: (kv[1][0] - r)  2 + (kv[1][1] - g)  2 + (kv[1][2] - b)  2)[0]
-            if name not in namen:
-                namen.append(name)
+            r, g, b = palette[idx * 3 : idx * 3 + 3]
+            farbname = min(
+                FARBEN_RGB.items(),
+                key=lambda kv: (kv[1][0] - r) ** 2 + (kv[1][1] - g) ** 2 + (kv[1][2] - b) ** 2
+            )[0]
+            if farbname not in namen:
+                namen.append(farbname)
             if len(namen) >= n:
                 break
         return namen
@@ -126,19 +151,34 @@ def dominante_farben(image, n=2):
         return []
 
 def ki_scan(image):
-    """Echte KI-Erkennung: Kategorie, Muster, Farben -> Tags."""
-    art, pipe = ladekimodell()
+    """KI-Scan: Kategorie, Muster, Farben → Tags."""
+    modell_art, pipe = lade_ki_modell()
     farben = dominante_farben(image)
-    kategorie, konf, zusatz, muster = "Sonstiges", 0.0, [], []
-    if art == "clip":
-        kat = sorted(((KATEGORIE_LABELS[r["label"]], r["score"])
-                      for r in pipe(image, candidatelabels=list(KATEGORIELABELS))),
-                     key=lambda t: -t[1])
-        kategorie, konf = kat[0]
-        zusatz = [k for k, _ in kat[1:3]]
-        muster = [MUSTER_LABELS[m["label"]]
-                  for m in pipe(image, candidatelabels=list(MUSTERLABELS))[:1]]
-    elif art == "vit":
+    kategorie, konfidenz = "Sonstiges", 0.0
+    zusatz, muster = [], []
+
+    if modell_art == "clip":
+        # Kategorie erkennen
+        kat_ergebnisse = pipe(
+            image,
+            candidate_labels=list(KATEGORIE_LABELS.keys())
+        )
+        kat_ergebnisse = [
+            (KATEGORIE_LABELS[r["label"]], r["score"])
+            for r in kat_ergebnisse
+        ]
+        kat_ergebnisse.sort(key=lambda t: -t[1])
+        kategorie, konfidenz = kat_ergebnisse[0]
+        zusatz = [k for k, _ in kat_ergebnisse[1:3]]
+
+        # Muster erkennen
+        muster_ergebnisse = pipe(
+            image,
+            candidate_labels=list(MUSTER_LABELS.keys())
+        )
+        muster = [MUSTER_LABELS[m["label"]] for m in muster_ergebnisse[:1]]
+
+    elif modell_art == "vit":
         preds = pipe(image, top_k=5)
         kat_tags = []
         for p in preds:
@@ -148,62 +188,131 @@ def ki_scan(image):
                     kat_tags.append(de)
                     break
         if kat_tags:
-            kategorie, konf = kat_tags[0], preds[0]["score"]
+            kategorie, konfidenz = kat_tags[0], preds[0]["score"]
             zusatz = kat_tags[1:3]
-    tags, gesehen = [], set()
+
+    # Tags zusammenstellen (ohne Duplikate)
+    tags = []
+    gesehen = set()
     for t in [kategorie] + zusatz + farben + muster:
         if t not in gesehen:
             gesehen.add(t)
             tags.append(t)
-    return {"kategorie": kategorie, "konfidenz": round(float(konf), 2),
-            "farben": farben, "muster": muster, "tags": tags[:6], "modell": art or "Farbanalyse"}
 
+    return {
+        "kategorie": kategorie,
+        "konfidenz": round(float(konfidenz), 2),
+        "farben": farben,
+        "muster": muster,
+        "tags": tags[:6],
+        "modell": modell_art or "Farbanalyse"
+    }
 
+# --- Datenbank-Funktionen ---
 SEED = [
-    dict(id="seed-1", name="Beiger Strickpullover", art="gefunden", kategorie="Pullover",
-         tags=["Pullover", "beige", "einfarbig"], ort="Stadtbibliothek, 2. OG",
-         datum="2024-05-14", kontakt="fundbuero@stadt.example", status="gefunden",
-         beschreibung="Weicher Strickpullover, gefunden im Lesesaal.",
-         img="https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/1d93f06d3-e699-478f-b5ab-1c80c9f270f7.png",
-         ki=dict(kategorie="Pullover", konfidenz=0.93, farben=["beige"], muster=["einfarbig"],
-                 tags=["Pullover", "beige", "einfarbig"], modell="clip")),
-    dict(id="seed-2", name="Roter Rentier-Pulli", art="vermisst", kategorie="Pullover",
-         tags=["Pullover", "rot", "mit Motiv"], ort="Weihnachtsmarkt, Innenstadt",
-         datum="2024-05-10", kontakt="anna@beispiel.de", status="vermisst",
-         beschreibung="Weihnachtspullover mit weißem Rentier, sehr sentimental.",
-         img="https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/168fbd83f-e612-4312-b852-b759a837bec2.png",
-         ki=dict(kategorie="Pullover", konfidenz=0.91, farben=["rot", "weiß"], muster=["mit Motiv"],
-                 tags=["Pullover", "rot", "mit Motiv"], modell="clip")),
-    dict(id="seed-3", name="Schwarze Lederhandschuhe", art="gefunden", kategorie="Handschuhe",
-         tags=["Handschuhe", "schwarz", "Leder"], ort="Bushaltestelle Bahnhofstraße",
-         datum="2024-05-12", kontakt="fundbuero@stadt.example", status="gefunden",
-         beschreibung="Paar schwarze Lederhandschuhe auf einer Bank gefunden.",
-         img="https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/15a9f5af0-4f00-436c-846d-2b28f45c8668.png",
-         ki=dict(kategorie="Handschuhe", konfidenz=0.89, farben=["schwarz"], muster=["einfarbig"],
-                 tags=["Handschuhe", "schwarz", "einfarbig"], modell="clip")),
-    dict(id="seed-4", name="Blauer Rucksack", art="vermisst", kategorie="Rucksack",
-         tags=["Rucksack", "blau", "einfarbig"], ort="Uni-Mensa, Campus Nord",
-         datum="2024-05-08", kontakt="max@beispiel.de", status="vermisst",
-         beschreibung="Blauer Rucksack mit silbernen Reißverschlüssen, Laptopfach.",
-         img="https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/10568a9d7-a103-4755-a7fb-04a7ea6c3348.png",
-         ki=dict(kategorie="Rucksack", konfidenz=0.95, farben=["blau"], muster=["einfarbig"],
-                 tags=["Rucksack", "blau", "einfarbig"], modell="clip")),
+    {
+        "id": "seed-1",
+        "name": "Beiger Strickpullover",
+        "art": "gefunden",
+        "kategorie": "Pullover",
+        "tags": ["Pullover", "beige", "einfarbig"],
+        "ort": "Stadtbibliothek, 2. OG",
+        "datum": "2024-05-14",
+        "kontakt": "fundbuero@stadt.example",
+        "status": "gefunden",
+        "beschreibung": "Weicher Strickpullover, gefunden im Lesesaal.",
+        "img": "https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/1d93f06d3-e699-478f-b5ab-1c80c9f270f7.png",
+        "ki": {
+            "kategorie": "Pullover",
+            "konfidenz": 0.93,
+            "farben": ["beige"],
+            "muster": ["einfarbig"],
+            "tags": ["Pullover", "beige", "einfarbig"],
+            "modell": "clip"
+        }
+    },
+    {
+        "id": "seed-2",
+        "name": "Roter Rentier-Pulli",
+        "art": "vermisst",
+        "kategorie": "Pullover",
+        "tags": ["Pullover", "rot", "mit Motiv"],
+        "ort": "Weihnachtsmarkt, Innenstadt",
+        "datum": "2024-05-10",
+        "kontakt": "anna@beispiel.de",
+        "status": "vermisst",
+        "beschreibung": "Weihnachtspullover mit weißem Rentier, sehr sentimental.",
+        "img": "https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/168fbd83f-e612-4312-b852-b759a837bec2.png",
+        "ki": {
+            "kategorie": "Pullover",
+            "konfidenz": 0.91,
+            "farben": ["rot", "weiß"],
+            "muster": ["mit Motiv"],
+            "tags": ["Pullover", "rot", "mit Motiv"],
+            "modell": "clip"
+        }
+    },
+    {
+        "id": "seed-3",
+        "name": "Schwarze Lederhandschuhe",
+        "art": "gefunden",
+        "kategorie": "Handschuhe",
+        "tags": ["Handschuhe", "schwarz", "Leder"],
+        "ort": "Bushaltestelle Bahnhofstraße",
+        "datum": "2024-05-12",
+        "kontakt": "fundbuero@stadt.example",
+        "status": "gefunden",
+        "beschreibung": "Paar schwarze Lederhandschuhe auf einer Bank gefunden.",
+        "img": "https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/15a9f5af0-4f00-436c-846d-2b28f45c8668.png",
+        "ki": {
+            "kategorie": "Handschuhe",
+            "konfidenz": 0.89,
+            "farben": ["schwarz"],
+            "muster": ["einfarbig"],
+            "tags": ["Handschuhe", "schwarz", "einfarbig"],
+            "modell": "clip"
+        }
+    },
+    {
+        "id": "seed-4",
+        "name": "Blauer Rucksack",
+        "art": "vermisst",
+        "kategorie": "Rucksack",
+        "tags": ["Rucksack", "blau", "einfarbig"],
+        "ort": "Uni-Mensa, Campus Nord",
+        "datum": "2024-05-08",
+        "kontakt": "max@beispiel.de",
+        "status": "vermisst",
+        "beschreibung": "Blauer Rucksack mit silbernen Reißverschlüssen, Laptopfach.",
+        "img": "https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/10568a9d7-a103-4755-a7fb-04a7ea6c3348.png",
+        "ki": {
+            "kategorie": "Rucksack",
+            "konfidenz": 0.95,
+            "farben": ["blau"],
+            "muster": ["einfarbig"],
+            "tags": ["Rucksack", "blau", "einfarbig"],
+            "modell": "clip"
+        }
+    },
 ]
 
 def speichere_db(items):
-    DBDATEI.writetext(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Speichert die Datenbank in eine JSON-Datei."""
+    DB_DATEI.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def lade_db():
+    """Lädt die Datenbank aus der JSON-Datei oder erstellt SEED-Daten."""
     if DB_DATEI.exists():
         try:
-            return json.loads(DBDATEI.readtext(encoding="utf-8"))
+            return json.loads(DB_DATEI.read_text(encoding="utf-8"))
         except Exception:
             pass
     speichere_db(SEED)
     return [dict(i) for i in SEED]
 
+# --- Session-State Initialisierung ---
 if "db" not in st.session_state:
-    st.sessionstate.db = ladedb()
+    st.session_state.db = lade_db()
 if "page" not in st.session_state:
     st.session_state.page = "home"
 if "carousel" not in st.session_state:
@@ -212,42 +321,61 @@ if "selected" not in st.session_state:
     st.session_state.selected = None
 if "scan" not in st.session_state:
     st.session_state.scan = None
-if "scanfile" not in st.sessionstate:
-    st.sessionstate.scanfile = None
-if "zeigekontakt" not in st.sessionstate:
-    st.sessionstate.zeigekontakt = False
+if "scanfile" not in st.session_state:
+    st.session_state.scanfile = None
+if "zeigekontakt" not in st.session_state:
+    st.session_state.zeigekontakt = False
 
+# --- Navigationsfunktion ---
 def navigate(page):
     st.session_state.page = page
-    st.sessionstate.zeigekontakt = False
+    st.session_state.zeigekontakt = False
     st.rerun()
 
+# --- UI-Hilfsfunktionen ---
 def badge(text):
-    return f"{text}"
+    """Erstellt ein HTML-Badge für Tags."""
+    return f'<span class="tag">{text}</span>'
 
 def status_badge(status):
-    cls = {"gefunden": "status-gefunden", "vermisst": "status-vermisst",
-           "zurückgegeben": "status-zurueckgegeben"}.get(status, "status-gefunden")
-    return f"{status}"
+    """Erstellt ein HTML-Badge für den Status."""
+    cls = {
+        "gefunden": "status-gefunden",
+        "vermisst": "status-vermisst",
+        "zurückgegeben": "status-zurueckgegeben"
+    }.get(status, "status-gefunden")
+    return f'<span class="{cls}">{status}</span>'
 
 def karte(item, key):
+    """Zeigt eine Fundkarte an."""
     with st.container():
-        st.markdown("", unsafeallowhtml=True)
-        st.image(item["img"], usecontainerwidth=True)
-        st.markdown(f"{item['name']} &nbsp; {status_badge(item['status'])}",
-                    unsafeallowhtml=True)
-        st.markdown(f"📍 {item['ort']} · 🗓 {item['datum']}",
-                    unsafeallowhtml=True)
-        st.markdown("".join(badge(t) for t in item["tags"][:4]), unsafeallowhtml=True)
-        if st.button("Ansehen", key=key, usecontainerwidth=True):
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.image(item["img"], use_container_width=True)
+        st.markdown(
+            f'{item["name"]} &nbsp; {status_badge(item["status"])}',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f'📍 {item["ort"]} · 🗓 {item["datum"]}',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            "".join(badge(t) for t in item["tags"][:4]),
+            unsafe_allow_html=True
+        )
+        if st.button("Ansehen", key=key, use_container_width=True):
             st.session_state.selected = item["id"]
             navigate("detail")
-        st.markdown("", unsafeallowhtml=True)
-        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# --- Seiten ---
+# 1. Startseite
 if st.session_state.page == "home":
-    st.markdown("🔍 Fundgrube", unsafeallowhtml=True)
-    st.markdown("Virtuelles Fundbüro – Verlorenes wiederfinden & Funde melden",
-                unsafeallowhtml=True)
+    st.markdown('<p class="app-title">🔍 Fundgrube</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="app-sub">Virtuelles Fundbüro – Verlorenes wiederfinden & Funde melden</p>',
+        unsafe_allow_html=True
+    )
 
     db = st.session_state.db
     offen = [i for i in db if i["status"] != "zurückgegeben"]
@@ -256,44 +384,49 @@ if st.session_state.page == "home":
     c2.metric("Vermisst", sum(1 for i in db if i["art"] == "vermisst"))
     c3.metric("Offene Einträge", len(offen))
 
-    st.markdown("Zuletzt hinzugefügt", unsafeallowhtml=True)
+    st.markdown("### Zuletzt hinzugefügt", unsafe_allow_html=True)
     liste = sorted(db, key=lambda i: i["datum"], reverse=True)
     if liste:
         idx = st.session_state.carousel % len(liste)
         akt = liste[idx]
         l, m, r = st.columns([1, 6, 1])
         with l:
-            if st.button("‹", usecontainerwidth=True):
+            if st.button("‹", use_container_width=True):
                 st.session_state.carousel = (idx - 1) % len(liste)
                 st.rerun()
         with m:
-            st.image(akt["img"], usecontainerwidth=True)
-            st.markdown(f"{akt['name']} &nbsp; {status_badge(akt['status'])}",
-                        unsafeallowhtml=True)
-            st.markdown("".join(badge(t) for t in akt["tags"][:4]), unsafeallowhtml=True)
+            st.image(akt["img"], use_container_width=True)
+            st.markdown(
+                f'{akt["name"]} &nbsp; {status_badge(akt["status"])}',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                "".join(badge(t) for t in akt["tags"][:4]),
+                unsafe_allow_html=True
+            )
         with r:
-            if st.button("›", usecontainerwidth=True):
+            if st.button("›", use_container_width=True):
                 st.session_state.carousel = (idx + 1) % len(liste)
                 st.rerun()
         st.write("")
         c1, c2, c3 = st.columns([1, 4, 1])
         with c2:
-            if st.button("🔍 Fundstück suchen", usecontainerwidth=True):
+            if st.button("🔍 Fundstück suchen", use_container_width=True):
                 navigate("suchen")
             st.write("")
-            if st.button("↑ Fund melden", type="primary", usecontainerwidth=True):
+            if st.button("↑ Fund melden", type="primary", use_container_width=True):
                 navigate("hochladen")
     else:
         st.info("Noch keine Einträge vorhanden. Melde deinen ersten Fund!")
-        if st.button("↑ Fund melden", type="primary", usecontainerwidth=True):
+        if st.button("↑ Fund melden", type="primary", use_container_width=True):
             navigate("hochladen")
 
-
-
+# 2. Suche
 elif st.session_state.page == "suchen":
     if st.button("↩ Zurück"):
         navigate("home")
     st.markdown("### 🔍 Fundstück suchen")
+
     query = st.text_input("Suchbegriff (Name, Tag, Ort …)", value="")
     f1, f2 = st.columns(2)
     with f1:
@@ -305,8 +438,12 @@ elif st.session_state.page == "suchen":
     erg = st.session_state.db
     if query:
         q = query.lower().strip()
-        erg = [i for i in erg if q in i["name"].lower() or q in i["ort"].lower()
-               or any(q in t.lower() for t in i["tags"])]
+        erg = [
+            i for i in erg
+            if q in i["name"].lower()
+            or q in i["ort"].lower()
+            or any(q in t.lower() for t in i["tags"])
+        ]
     if status_filter != "Alle":
         erg = [i for i in erg if i["status"] == status_filter]
     if kat_filter:
@@ -321,24 +458,24 @@ elif st.session_state.page == "suchen":
     else:
         st.info("Kein Treffer – vielleicht magst du selbst einen Fund melden?")
 
-
-
+# 3. Hochladen
 elif st.session_state.page == "hochladen":
     if st.button("↩ Zurück"):
         navigate("home")
     st.markdown("### ↑ Fund melden / Vermisstenanzeige")
+
     uploaded = st.file_uploader("Foto hochladen", type=["jpg", "jpeg", "png"])
 
     if uploaded:
-        if uploaded.name != st.sessionstate.scanfile:
+        if uploaded.name != st.session_state.scanfile:
             st.session_state.scan = None
-            st.sessionstate.scanfile = uploaded.name
+            st.session_state.scanfile = uploaded.name
         bild_obj = Image.open(uploaded).convert("RGB")
-        st.image(bildobj, usecontainer_width=True)
+        st.image(bild_obj, use_container_width=True)
 
-        if st.button("🤖 Hochladen & KI-Scan", type="primary", usecontainerwidth=True):
+        if st.button("🤖 Hochladen & KI-Scan", type="primary", use_container_width=True):
             with st.spinner("KI-Modell analysiert das Bild … (erstes Laden dauert kurz)"):
-                st.sessionstate.scan = kiscan(bild_obj)
+                st.session_state.scan = ki_scan(bild_obj)
 
         if st.session_state.scan:
             res = st.session_state.scan
@@ -346,7 +483,10 @@ elif st.session_state.page == "hochladen":
             st.markdown(f"Kategorie: {res['kategorie']} · Modell: {res['modell']}")
             st.progress(float(res["konfidenz"]))
             st.caption(f"Konfidenz: {int(res['konfidenz'] * 100)} %")
-            st.markdown("".join(badge(t) for t in res["tags"]), unsafeallowhtml=True)
+            st.markdown(
+                "".join(badge(t) for t in res["tags"]),
+                unsafe_allow_html=True
+            )
 
             st.markdown("#### Angaben zum Eintrag")
             name = st.text_input("Bezeichnung", value=res["kategorie"])
@@ -355,72 +495,92 @@ elif st.session_state.page == "hochladen":
             datum = st.date_input("Datum", value=date.today())
             kontakt = st.text_input("Kontakt (E-Mail / Telefon)")
             beschreibung = st.text_area("Beschreibung")
-            tagstxt = st.textinput("Tags (KI-Vorschlag, anpassbar)",
-                                     value=", ".join(res["tags"]))
-            if st.button("💾 In Fundgrube aufnehmen", type="primary", usecontainerwidth=True):
+            tags_txt = st.text_input(
+                "Tags (KI-Vorschlag, anpassbar)",
+                value=", ".join(res["tags"])
+            )
+
+            if st.button("💾 In Fundgrube aufnehmen", type="primary", use_container_width=True):
                 if not name.strip() or not ort.strip():
                     st.warning("Bitte mindestens Bezeichnung und Ort angeben.")
                 else:
                     bid = uuid.uuid4().hex
-                    pfad = BILD_ORDNER / f"{bid}.png"
+                    pfad = BILDORDNER / f"{bid}.png"
                     bild_obj.save(pfad, format="PNG")
-                    eintrag = dict(id=bid, name=name.strip(), art=art,
-                                   kategorie=res["kategorie"],
-                                   tags=[t.strip() for t in tags_txt.split(",") if t.strip()],
-                                   ort=ort.strip(), datum=datum.isoformat(),
-                                   kontakt=kontakt.strip(), beschreibung=beschreibung.strip(),
-                                   status=art, img=str(pfad), ki=res)
+                    eintrag = {
+                        "id": bid,
+                        "name": name.strip(),
+                        "art": art,
+                        "kategorie": res["kategorie"],
+                        "tags": [t.strip() for t in tags_txt.split(",") if t.strip()],
+                        "ort": ort.strip(),
+                        "datum": datum.isoformat(),
+                        "kontakt": kontakt.strip(),
+                        "beschreibung": beschreibung.strip(),
+                        "status": art,
+                        "img": str(pfad),
+                        "ki": res
+                    }
                     st.session_state.db.insert(0, eintrag)
-                    speicheredb(st.sessionstate.db)
+                    speichere_db(st.session_state.db)
                     st.session_state.scan = None
-                    st.sessionstate.scanfile = None
+                    st.session_state.scanfile = None
                     st.session_state.selected = bid
                     st.balloons()
                     navigate("detail")
     else:
         st.info("Bitte lade ein Foto hoch – die KI erkennt automatisch Kategorie, Farben & Muster.")
 
-
-
+# 4. Detailansicht
 elif st.session_state.page == "detail":
     if st.button("↩ Zurück"):
         navigate("suchen")
-    item = next((i for i in st.sessionstate.db if i["id"] == st.sessionstate.selected), None)
+
+    item = next((i for i in st.session_state.db if i["id"] == st.session_state.selected), None)
     if item:
-        st.image(item["img"], usecontainerwidth=True)
+        st.image(item["img"], use_container_width=True)
         st.markdown(f"### {item['name']}")
-        st.markdown(f"{status_badge(item['status'])} &nbsp; "
-                    f"📍 {item['ort']} · 🗓 {item['datum']}",
-                    unsafeallowhtml=True)
-        st.markdown("".join(badge(t) for t in item["tags"]), unsafeallowhtml=True)
+        st.markdown(
+            f"{status_badge(item['status'])} &nbsp; 📍 {item['ort']} · 🗓 {item['datum']}",
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            "".join(badge(t) for t in item["tags"]),
+            unsafe_allow_html=True
+        )
         if item.get("beschreibung"):
             st.write(item["beschreibung"])
 
         with st.expander("🤖 KI-Analyse anzeigen"):
             ki = item.get("ki", {})
-            st.markdown(f"Erkannte Kategorie: {ki.get('kategorie', '–')} "
-                        f"· Modell: {ki.get('modell', '–')}")
+            st.markdown(
+                f"Erkannte Kategorie: {ki.get('kategorie', '–')} · Modell: {ki.get('modell', '–')}"
+            )
             st.progress(float(ki.get("konfidenz", 0.0)))
-            st.markdown(f"Farben: {', '.join(ki.get('farben', [])) or '–'}  ·  "
-                        f"Muster: {', '.join(ki.get('muster', [])) or '–'}")
+            st.markdown(
+                f"Farben: {', '.join(ki.get('farben', [])) or '–'}  ·  "
+                f"Muster: {', '.join(ki.get('muster', [])) or '–'}"
+            )
 
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✉ Kontakt anzeigen", usecontainerwidth=True):
-                st.sessionstate.zeigekontakt = not st.sessionstate.zeigekontakt
+            if st.button("✉ Kontakt anzeigen", use_container_width=True):
+                st.session_state.zeigekontakt = not st.session_state.zeigekontakt
         with c2:
             if item["status"] != "zurückgegeben":
-                if st.button("✅ Als zurückgegeben markieren", usecontainerwidth=True):
+                if st.button("✅ Als zurückgegeben markieren", use_container_width=True):
                     item["status"] = "zurückgegeben"
-                    speicheredb(st.sessionstate.db)
+                    speichere_db(st.session_state.db)
                     st.rerun()
-        if st.sessionstate.zeigekontakt:
+
+        if st.session_state.zeigekontakt:
             st.success(f"Kontakt: {item.get('kontakt') or 'Kein Kontakt hinterlegt'}")
-        if st.button("🗑 Eintrag entfernen", usecontainerwidth=True):
-            st.sessionstate.db = [i for i in st.sessionstate.db if i["id"] != item["id"]]
-            speicheredb(st.sessionstate.db)
+
+        if st.button("🗑 Eintrag entfernen", use_container_width=True):
+            st.session_state.db = [i for i in st.session_state.db if i["id"] != item["id"]]
+            speichere_db(st.session_state.db)
             navigate("home")
     else:
         st.warning("Eintrag nicht gefunden.")
-        if st.button(" Zur Startseite", usecontainerwidth=True):
+        if st.button("Zur Startseite", use_container_width=True):
             navigate("home")
