@@ -48,7 +48,7 @@ if st.session_state.page == "home":
     st.markdown("### Zuletzt Hinzugefügt")
     # Zeigt das erste Bild aus der simulierten Datenbank an
     latest_item = st.session_state.mock_db[0]
-   st.image(latest_item["image"], use_container_width=True)
+    st.image(latest_item["image"], use_container_width=True)
     
     st.write("")
     col1, col2, col3 = st.columns([1, 4, 1])
