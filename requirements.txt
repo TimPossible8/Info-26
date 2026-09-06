@@ -1,9 +1,9 @@
-streamlit>=1.30.0
+streamlit>=1.32
 plotly>=5.18.0
 sympy>=1.12
 numpy>=1.26.0
 tensorflow
-Pillow
-transformers
-torch
 torchvision
+transformers>=4.38
+torch>=2.1
+Pillow>=10.0
