@@ -1,129 +1,201 @@
 import streamlit as st
-import random
 
-# --- SEITENKONFIGURATION ---
-st.set_page_config(page_title="Fundgrube App", layout="centered", initial_sidebar_state="collapsed")
+# --- 1. SEITEN-KONFIGURATION ---
+st.set_page_config(page_title="Fundgrube", layout="centered")
 
-# Ein wenig CSS, um die Buttons abzurunden (ähnlich deinem Design)
+# --- 2. EXACT DESIGN (CUSTOM CSS) ---
 st.markdown("""
-    <style>
-    .stButton>button {
-        width: 100%;
-        border-radius: 15px;
-        height: 50px;
-        font-weight: bold;
+<style>
+    /* Hintergrund leicht lila einfärben für den Bubble-Look-Vibe */
+    .stApp {
+        background-color: #F8F5FE;
     }
-    </style>
-    """, unsafe_allow_html=True)
+    
+    /* Standard-Streamlit Menüs verstecken für App-Feeling */
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
 
-# --- DATENBANK & NAVIGATION INITIALISIEREN ---
-if "mock_db" not in st.session_state:
-    st.session_state.mock_db = [
-        {"id": 1, "name": "Beiger Pullover", "tags": ["pullover", "beige", "winter", "strick"], "image": "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=400&q=80"},
-        {"id": 2, "name": "Roter Weihnachtspullover", "tags": ["pullover", "rot", "weihnachten", "rentier"], "image": "https://images.unsplash.com/photo-1543322748-33df6d3db806?auto=format&fit=crop&w=400&q=80"},
-        {"id": 3, "name": "Lila Strickjacke", "tags": ["pullover", "lila", "strickjacke", "herbst"], "image": "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?auto=format&fit=crop&w=400&q=80"},
-        {"id": 4, "name": "Weißer Hoodie", "tags": ["pullover", "hoodie", "weiß", "basic"], "image": "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=400&q=80"},
+    /* Bilder abrunden wie im Design */
+    img {
+        border-radius: 20px;
+    }
+
+    /* Dunkellila Buttons (Primär) -> z.B. Artikel Hochladen, Kontaktieren */
+    button[kind="primary"] {
+        background-color: #6B52A3 !important;
+        color: white !important;
+        border-radius: 25px !important;
+        border: none !important;
+        height: 55px !important;
+        font-weight: 700 !important;
+        font-size: 18px !important;
+    }
+
+    /* Helllila Buttons (Sekundär) -> z.B. Artikel Suchen, Reservieren */
+    button[kind="secondary"] {
+        background-color: #D4C4F7 !important;
+        color: #4A4A4A !important;
+        border-radius: 25px !important;
+        border: none !important;
+        height: 55px !important;
+        font-weight: 700 !important;
+        font-size: 18px !important;
+    }
+
+    /* Das "Zuletzt Hinzugefügt" Badge */
+    .badge-label {
+        background-color: #D4C4F7;
+        color: #6B52A3;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: -15px;
+        position: relative;
+        z-index: 10;
+    }
+
+    /* Titel Styling */
+    .app-title {
+        text-align: center;
+        font-weight: 900;
+        font-size: 32px;
+        color: #000000;
+        margin-top: 20px;
+        margin-bottom: 30px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# --- 3. DATENBANK & STATE INITIALISIEREN ---
+if "db" not in st.session_state:
+    st.session_state.db = [
+        {"id": 1, "name": "Beiger Strickpullover", "tags": ["pullover", "beige", "strick", "winter"], "img": "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=400&q=80"},
+        {"id": 2, "name": "Roter Rentier-Pulli", "tags": ["pullover", "rot", "weihnachten", "rentier"], "img": "https://images.unsplash.com/photo-1543322748-33df6d3db806?auto=format&fit=crop&w=400&q=80"},
+        {"id": 3, "name": "Lila Strickjacke", "tags": ["strickjacke", "lila", "herbst"], "img": "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?auto=format&fit=crop&w=400&q=80"},
+        {"id": 4, "name": "Weißer Hoodie", "tags": ["hoodie", "weiß", "basic", "pullover"], "img": "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=400&q=80"}
     ]
 
 if "page" not in st.session_state:
     st.session_state.page = "home"
-
+if "carousel_idx" not in st.session_state:
+    st.session_state.carousel_idx = 0
 if "selected_item" not in st.session_state:
     st.session_state.selected_item = None
 
-# Hilfsfunktionen für die Navigation
-def navigate_to(page_name):
+def navigate(page_name):
     st.session_state.page = page_name
     st.rerun()
 
-def view_item(item):
-    st.session_state.selected_item = item
-    navigate_to("detail")
 
-# --- SCREEN 1: HOME ---
+# --- SCREEN 1: HOME (1_2.jpg) ---
 if st.session_state.page == "home":
-    st.markdown("<h1 style='text-align: center;'>Fundgrube</h1>", unsafe_allow_html=True)
-    st.write("")
+    st.markdown("<div class='app-title'>Fundgrube</div>", unsafe_allow_html=True)
     
-    st.markdown("### Zuletzt Hinzugefügt")
-    # Zeigt das erste Bild aus der simulierten Datenbank an
-    latest_item = st.session_state.mock_db[0]
-    st.image(latest_item["image"], use_container_width=True)
+    col_main, col_space = st.columns([10, 1])
+    with col_main:
+        st.markdown("<div class='badge-label'>Zuletzt Hinzugefügt</div>", unsafe_allow_html=True)
     
-    st.write("")
+    # Bilder-Karussell Simulation
+    c_left, c_img, c_right = st.columns([1, 8, 1], gap="small")
+    
+    with c_left:
+        st.write("\n\n\n")
+        if st.button("❮", key="prev"):
+            st.session_state.carousel_idx = (st.session_state.carousel_idx - 1) % len(st.session_state.db)
+            st.rerun()
+            
+    with c_img:
+        current_item = st.session_state.db[st.session_state.carousel_idx]
+        st.image(current_item["img"], use_container_width=True)
+        
+    with c_right:
+        st.write("\n\n\n")
+        if st.button("❯", key="next"):
+            st.session_state.carousel_idx = (st.session_state.carousel_idx + 1) % len(st.session_state.db)
+            st.rerun()
+            
+    st.write("---")
+    
+    # Action Buttons
     col1, col2, col3 = st.columns([1, 4, 1])
     with col2:
-        if st.button("🔍 Artikel Suchen"):
-            navigate_to("search")
-        if st.button("⬆️ Artikel Hochladen", type="primary"):
-            navigate_to("upload")
+        if st.button("🔍 Artikel Suchen", use_container_width=True): # Sekundär (Hell)
+            navigate("search")
+        st.write("")
+        if st.button("↑ Artikel Hochladen", type="primary", use_container_width=True): # Primär (Dunkel)
+            navigate("upload")
 
-# --- SCREEN 2: UPLOAD & KI TAGGING ---
-elif st.session_state.page == "upload":
-    if st.button("⬅️ Zurück"):
-        navigate_to("home")
-        
-    st.header("Artikel Hochladen")
-    
-    # Datei-Upload-Feld
-    uploaded_file = st.file_uploader("Bild auswählen", type=["jpg", "png", "jpeg"])
-    
-    st.write("")
-    if st.button("Artikel Hochladen (KI-Scan starten)", type="primary"):
-        # Simuliere das KI Tagging
-        new_tags = ["pullover", "grau", "vintage", "neu"]
-        new_item = {
-            "id": random.randint(10, 1000),
-            "name": "Neuer KI-erkannter Pullover",
-            "tags": new_tags,
-            "image": "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?auto=format&fit=crop&w=400&q=80" # Platzhalterbild
-        }
-        st.session_state.mock_db.insert(0, new_item)
-        
-        st.success(f"Erfolgreich hochgeladen! Die KI hat folgende Tags erkannt: {', '.join(new_tags)}")
-        st.balloons() # Kleine Streamlit-Animation als Feedback
 
-# --- SCREEN 3: SUCHE ---
+# --- SCREEN 2: SUCHE (3_2.jpg) ---
 elif st.session_state.page == "search":
-    if st.button("⬅️ Zurück zum Start"):
-        navigate_to("home")
+    if st.button("↩ Zurück"):
+        navigate("home")
         
-    search_query = st.text_input("🔍 Suchen (z.B. Pullover, rot...)", placeholder="Suchen...")
+    # HIER IST DER GEFIXTE FILTER FÜR DIE KI-TAGS
+    query = st.text_input("🔍 Suchen (z.B. Pullover)", value="")
+    
+    if query:
+        q = query.lower().strip()
+        # Sucht jetzt robust im Namen ODER in JEDEM einzelnen KI-Tag 
+        filtered_db = [
+            item for item in st.session_state.db 
+            if q in item["name"].lower() or any(q in tag.lower() for tag in item["tags"])
+        ]
+    else:
+        filtered_db = st.session_state.db
+        
     st.write("")
     
-    # Filter-Logik: Sucht in Namen und KI-Tags
-    query = search_query.lower()
-    results = [
-        item for item in st.session_state.mock_db 
-        if query in item["name"].lower() or any(query in tag for tag in item["tags"])
-    ]
-    
-    # Rasterdarstellung (2 Spalten)
+    # Rasteransicht
     cols = st.columns(2)
-    for i, item in enumerate(results):
+    for i, item in enumerate(filtered_db):
         with cols[i % 2]:
-            st.image(item["image"], use_container_width=True)
-            if st.button(f"Ansehen", key=f"view_{item['id']}"):
-                view_item(item)
-            st.write("") # Abstand
+            st.image(item["img"], use_container_width=True)
+            if st.button("Ansehen", key=f"btn_{item['id']}", use_container_width=True):
+                st.session_state.selected_item = item
+                navigate("detail")
+            st.write("")
 
-# --- SCREEN 4: DETAILANSICHT ---
+
+# --- SCREEN 3: DETAILANSICHT (4_2.jpg) ---
 elif st.session_state.page == "detail":
-    if st.button("⬅️ Zurück zur Suche"):
-        navigate_to("search")
+    if st.button("↩ Zurück"):
+        navigate("search")
         
     item = st.session_state.selected_item
-    if not item:
-        navigate_to("home")
+    if item:
+        st.image(item["img"], use_container_width=True)
+        st.caption(f"**Erkannte KI-Tags:** {', '.join(item['tags'])}")
+        
+        st.write("---")
+        col1, col2, col3 = st.columns([1, 4, 1])
+        with col2:
+            if st.button("🔖 Reservieren", use_container_width=True): # Sekundär (Hell)
+                st.success("Artikel wurde reserviert!")
+            st.write("")
+            if st.button("✉ Kontaktieren", type="primary", use_container_width=True): # Primär (Dunkel)
+                st.success("Kontaktformular geöffnet!")
+
+
+# --- SCREEN 4: UPLOAD (Fallback) ---
+elif st.session_state.page == "upload":
+    if st.button("↩ Zurück"):
+        navigate("home")
+        
+    st.markdown("### Neuer Artikel (KI-Tagging)")
+    st.file_uploader("Bild auswählen", type=["jpg", "png"])
     
-    st.image(item["image"], use_container_width=True)
-    st.subheader(item["name"])
-    st.caption(f"Erkannte KI-Tags: {', '.join(item['tags'])}")
-    
-    st.write("")
-    col1, col2, col3 = st.columns([1, 4, 1])
-    with col2:
-        if st.button("🔖 Reservieren"):
-            st.toast("Artikel wurde für dich reserviert!", icon="🎉")
-        if st.button("💬 Kontaktieren", type="primary"):
-            st.toast("Nachrichten-Funktion öffnet sich...", icon="✉️")
+    if st.button("Hochladen & KI-Scan", type="primary", use_container_width=True):
+        new_tags = ["pullover", "neu", "grau"]
+        st.session_state.db.insert(0, {
+            "id": len(st.session_state.db) + 1,
+            "name": "Neuer Artikel",
+            "tags": new_tags,
+            "img": "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?auto=format&fit=crop&w=400&q=80"
+        })
+        st.success(f"Erfolgreich! KI-Tags: {', '.join(new_tags)}")
+        st.balloons()
