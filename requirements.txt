@@ -4,3 +4,6 @@ sympy>=1.12
 numpy>=1.26.0
 tensorflow
 Pillow
+transformers
+torch
+torchvision
