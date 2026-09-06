@@ -1,20 +1,3 @@
-"""
-Fundgrube – Virtuelles Fundbüro (Streamlit + echtes KI-Modell)
-================================================================
-Installation:
-    pip install streamlit pillow transformers torch torchvision
-Start:
-    streamlit run fundgrube.py
-
-Funktionen:
-    * Virtuelle Fundgrube: verlorene Gegenstände suchen & eigene Funde melden
-    * Echtes KI-Modell (CLIP Zero-Shot, Fallback: ViT ImageNet, Fallback: Farbanalyse)
-      erkennt Kategorie, Farben & Muster und vergibt automatisch Tags
-    * Suche über Freitext, Kategorie, Status & Ort
-    * Detailansicht mit KI-Analyse, Kontakt & Statusverwaltung
-    * Persistenz über JSON-Datei + Bildordner
-"""
-
 import json
 import uuid
 from datetime import date
@@ -23,7 +6,6 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image
 
-Seiten-Konfiguration & Design (Lavendel-Design analog Mockup)
 
 st.setpageconfig(pagetitle="Fundgrube – Virtuelles Fundbüro", pageicon="🔍", layout="centered")
 
