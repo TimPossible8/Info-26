@@ -1,0 +1,648 @@
+# -*- coding: utf-8 -*-
+"""
+Fundgrube – Virtuelles Fundbüro (Streamlit + KI-Modell)
+Design: Modern mit Kreismuster-Hintergrund (wie Mockups)
+"""
+
+import json
+import uuid
+from datetime import date
+from pathlib import Path
+
+import streamlit as st
+from PIL import Image
+
+# --- Seiten-Konfiguration ---
+st.set_page_config(
+    page_title="Fundgrube",
+    page_icon="🔍",
+    layout="centered"
+)
+
+# --- CSS für Mockup-Design ---
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+    /* Hintergrund mit Kreismuster */
+    .stApp {
+        background:
+            radial-gradient(circle at 10% 20%, rgba(196, 196, 247, 0.3) 0%, transparent 30%),
+            radial-gradient(circle at 90% 80%, rgba(196, 196, 247, 0.3) 0%, transparent 30%),
+            radial-gradient(circle at 50% 50%, rgba(220, 216, 247, 0.5) 0%, transparent 50%),
+            #F8F5FE;
+        background-size: 100% 100%;
+        background-attachment: fixed;
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Verstecke Streamlit-Header/Footer */
+    #MainMenu, header, footer { visibility: hidden; }
+
+    /* Titel-Stil */
+    .title {
+        text-align: center;
+        font-weight: 700;
+        font-size: 36px;
+        color: #000;
+        margin-bottom: 10px;
+    }
+
+    /* Untertitel */
+    .subtitle {
+        text-align: center;
+        color: #6B52A3;
+        font-size: 16px;
+        margin-bottom: 30px;
+    }
+
+    /* Buttons */
+    button[kind="primary"] {
+        background-color: #6B52A3 !important;
+        color: white !important;
+        border-radius: 50px !important;
+        border: none !important;
+        height: 50px !important;
+        font-weight: 600 !important;
+        font-size: 16px !important;
+        padding: 0 24px !important;
+        box-shadow: 0 4px 12px rgba(107, 82, 163, 0.3) !important;
+    }
+
+    button[kind="secondary"] {
+        background-color: #D4C4F7 !important;
+        color: #4A4A4A !important;
+        border-radius: 50px !important;
+        border: none !important;
+        height: 50px !important;
+        font-weight: 600 !important;
+        font-size: 16px !important;
+        padding: 0 24px !important;
+    }
+
+    /* Bilder */
+    img {
+        border-radius: 20px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    /* Karten (Fundstücke) */
+    .card {
+        background: white;
+        border-radius: 20px;
+        padding: 16px;
+        box-shadow: 0 6px 16px rgba(107, 82, 163, 0.15);
+        margin-bottom: 20px;
+        transition: transform 0.2s;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+    }
+
+    /* Tags & Badges */
+    .tag {
+        background: #EDE7F6;
+        color: #6B52A3;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+        margin: 4px 4px 4px 0;
+    }
+
+    .status-gefunden {
+        background: #DFF5E1;
+        color: #2E7D32;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        display: inline-block;
+    }
+    .status-vermisst {
+        background: #FDE3E3;
+        color: #C62828;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        display: inline-block;
+    }
+    .status-zurueckgegeben {
+        background: #E3E3E3;
+        color: #555;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        display: inline-block;
+    }
+
+    /* Suchleiste */
+    .search-container {
+        background: #D4C4F7;
+        border-radius: 50px;
+        padding: 12px 20px;
+        margin-bottom: 20px;
+    }
+
+    /* Zurück-Button (Pfeil-Icon) */
+    .back-button {
+        background: #D4C4F7;
+        color: #6B52A3;
+        border: none;
+        border-radius: 50px;
+        padding: 8px 16px;
+        font-size: 18px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-bottom: 20px;
+    }
+
+    /* Metadaten (Ort, Datum) */
+    .meta {
+        color: #6b6b6b;
+        font-size: 14px;
+        margin: 8px 0;
+    }
+
+    /* Upload-Bereich */
+    .upload-box {
+        background: #EDE7F6;
+        border-radius: 20px;
+        padding: 40px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- Pfade & Datenbank ---
+BASE = Path(__file__).resolve().parent
+BILDORDNER = BASE / "fundgrubebilder"
+BILDORDNER.mkdir(parents=True, exist_ok=True)
+DB_DATEI = BASE / "fundgrubedb.json"
+
+# --- KI-Modell & Hilfsfunktionen (wie zuvor) ---
+KATEGORIE_LABELS = {
+    "a photo of a sweater or pullover": "Pullover",
+    "a photo of a jacket or coat": "Jacke",
+    "a photo of pants or trousers": "Hose",
+    "a photo of a dress": "Kleid",
+    "a photo of a skirt": "Rock",
+    "a photo of a t-shirt or shirt": "Shirt",
+    "a photo of shoes or sneakers": "Schuhe",
+    "a photo of boots": "Stiefel",
+    "a photo of gloves": "Handschuhe",
+    "a photo of a hat or beanie": "Mütze",
+    "a photo of a scarf": "Schal",
+    "a photo of socks": "Socken",
+    "a photo of a backpack": "Rucksack",
+    "a photo of a handbag or bag": "Tasche",
+    "a photo of an umbrella": "Regenschirm",
+    "a photo of a wristwatch": "Uhr",
+    "a photo of a wallet": "Portemonnaie",
+    "a photo of keys": "Schlüssel",
+    "a photo of glasses": "Brille",
+    "a photo of a plush toy": "Kuscheltier",
+}
+
+MUSTER_LABELS = {
+    "solid single color": "einfarbig",
+    "striped pattern": "gestreift",
+    "checkered pattern": "kariert",
+    "floral pattern": "gemustert",
+    "animal motif print": "mit Motiv",
+    "logo or text print": "mit Aufdruck",
+}
+
+VIT_MAP = [
+    ("sweater", "Pullover"), ("jersey", "Pullover"), ("jacket", "Jacke"), ("coat", "Jacke"),
+    ("jean", "Hose"), ("trouser", "Hose"), ("dress", "Kleid"), ("skirt", "Rock"),
+    ("shirt", "Shirt"), ("shoe", "Schuhe"), ("boot", "Stiefel"), ("glove", "Handschuhe"),
+    ("hat", "Mütze"), ("cap", "Mütze"), ("scarf", "Schal"), ("sock", "Socken"),
+    ("backpack", "Rucksack"), ("bag", "Tasche"), ("umbrella", "Regenschirm"),
+    ("watch", "Uhr"), ("wallet", "Portemonnaie"), ("toy", "Kuscheltier"),
+]
+
+FARBEN_RGB = {
+    "schwarz": (20, 20, 20), "weiß": (245, 245, 245), "grau": (130, 130, 130),
+    "rot": (200, 45, 45), "rosa": (240, 170, 190), "orange": (240, 140, 40),
+    "gelb": (240, 210, 60), "grün": (70, 150, 80), "blau": (50, 100, 200),
+    "braun": (120, 80, 50), "beige": (220, 200, 170), "lila": (130, 90, 180),
+    "türkis": (60, 180, 180),
+}
+
+@st.cache_resource(show_spinner=False)
+def lade_ki_modell():
+    try:
+        from transformers import pipeline
+        return ("clip", pipeline("zero-shot-image-classification", model="openai/clip-vit-base-patch32"))
+    except Exception:
+        try:
+            from transformers import pipeline
+            return ("vit", pipeline("image-classification", model="google/vit-base-patch16-224"))
+        except Exception:
+            return (None, None)
+
+def dominante_farben(image, n=2):
+    try:
+        klein = image.convert("RGB").resize((48, 48))
+        q = klein.quantize(colors=3)
+        palette = q.getpalette()
+        namen = []
+        for _, idx in sorted(q.getcolors(), reverse=True):
+            r, g, b = palette[idx * 3 : idx * 3 + 3]
+            farbname = min(
+                FARBEN_RGB.items(),
+                key=lambda kv: (kv[1][0] - r) ** 2 + (kv[1][1] - g) ** 2 + (kv[1][2] - b) ** 2
+            )[0]
+            if farbname not in namen:
+                namen.append(farbname)
+            if len(namen) >= n:
+                break
+        return namen
+    except Exception:
+        return []
+
+def ki_scan(image):
+    modell_art, pipe = lade_ki_modell()
+    farben = dominante_farben(image)
+    kategorie, konfidenz = "Sonstiges", 0.0
+    zusatz, muster = [], []
+
+    if modell_art == "clip":
+        kat_ergebnisse = pipe(image, candidate_labels=list(KATEGORIE_LABELS.keys()))
+        kat_ergebnisse = [
+            (KATEGORIE_LABELS[r["label"]], r["score"])
+            for r in kat_ergebnisse
+        ]
+        kat_ergebnisse.sort(key=lambda t: -t[1])
+        kategorie, konfidenz = kat_ergebnisse[0]
+        zusatz = [k for k, _ in kat_ergebnisse[1:3]]
+
+        muster_ergebnisse = pipe(image, candidate_labels=list(MUSTER_LABELS.keys()))
+        muster = [MUSTER_LABELS[m["label"]] for m in muster_ergebnisse[:1]]
+
+    elif modell_art == "vit":
+        preds = pipe(image, top_k=5)
+        kat_tags = []
+        for p in preds:
+            lab = p["label"].lower()
+            for kw, de in VIT_MAP:
+                if kw in lab and de not in kat_tags:
+                    kat_tags.append(de)
+                    break
+        if kat_tags:
+            kategorie, konfidenz = kat_tags[0], preds[0]["score"]
+            zusatz = kat_tags[1:3]
+
+    tags = []
+    gesehen = set()
+    for t in [kategorie] + zusatz + farben + muster:
+        if t not in gesehen:
+            gesehen.add(t)
+            tags.append(t)
+
+    return {
+        "kategorie": kategorie,
+        "konfidenz": round(float(konfidenz), 2),
+        "farben": farben,
+        "muster": muster,
+        "tags": tags[:6],
+        "modell": modell_art or "Farbanalyse"
+    }
+
+# --- Datenbank-Funktionen ---
+SEED = [
+    {
+        "id": "seed-1",
+        "name": "Beiger Strickpullover",
+        "art": "gefunden",
+        "kategorie": "Pullover",
+        "tags": ["Pullover", "beige", "einfarbig"],
+        "ort": "Stadtbibliothek, 2. OG",
+        "datum": "2024-05-14",
+        "kontakt": "fundbuero@stadt.example",
+        "status": "gefunden",
+        "beschreibung": "Weicher Strickpullover, gefunden im Lesesaal.",
+        "img": "https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/1d93f06d3-e699-478f-b5ab-1c80c9f270f7.png",
+        "ki": {
+            "kategorie": "Pullover",
+            "konfidenz": 0.93,
+            "farben": ["beige"],
+            "muster": ["einfarbig"],
+            "tags": ["Pullover", "beige", "einfarbig"],
+            "modell": "clip"
+        }
+    },
+    {
+        "id": "seed-2",
+        "name": "Roter Rentier-Pulli",
+        "art": "vermisst",
+        "kategorie": "Pullover",
+        "tags": ["Pullover", "rot", "mit Motiv"],
+        "ort": "Weihnachtsmarkt, Innenstadt",
+        "datum": "2024-05-10",
+        "kontakt": "anna@beispiel.de",
+        "status": "vermisst",
+        "beschreibung": "Weihnachtspullover mit weißem Rentier, sehr sentimental.",
+        "img": "https://image.qwenlm.ai/public_source/eb1442b2-84be-470b-9d4e-407314fab36b/168fbd83f-e612-4312-b852-b759a837bec2.png",
+        "ki": {
+            "kategorie": "Pullover",
+            "konfidenz": 0.91,
+            "farben": ["rot", "weiß"],
+            "muster": ["mit Motiv"],
+            "tags": ["Pullover", "rot", "mit Motiv"],
+            "modell": "clip"
+        }
+    },
+]
+
+def speichere_db(items):
+    DB_DATEI.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def lade_db():
+    if DB_DATEI.exists():
+        try:
+            return json.loads(DB_DATEI.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    speichere_db(SEED)
+    return [dict(i) for i in SEED]
+
+# --- Session-State ---
+if "db" not in st.session_state:
+    st.session_state.db = lade_db()
+if "page" not in st.session_state:
+    st.session_state.page = "home"
+if "carousel" not in st.session_state:
+    st.session_state.carousel = 0
+if "selected" not in st.session_state:
+    st.session_state.selected = None
+if "scan" not in st.session_state:
+    st.session_state.scan = None
+if "scanfile" not in st.session_state:
+    st.session_state.scanfile = None
+if "zeigekontakt" not in st.session_state:
+    st.session_state.zeigekontakt = False
+
+# --- Navigationsfunktion ---
+def navigate(page):
+    st.session_state.page = page
+    st.session_state.zeigekontakt = False
+    st.rerun()
+
+# --- UI-Hilfsfunktionen ---
+def badge(text):
+    return f'<span class="tag">{text}</span>'
+
+def status_badge(status):
+    cls = {
+        "gefunden": "status-gefunden",
+        "vermisst": "status-vermisst",
+        "zurückgegeben": "status-zurueckgegeben"
+    }.get(status, "status-gefunden")
+    return f'<span class="{cls}">{status}</span>'
+
+def karte(item, key):
+    with st.container():
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.image(item["img"], use_container_width=True)
+        st.markdown(
+            f'<p style="margin: 8px 0 4px 0;"><strong>{item["name"]}</strong> &nbsp; {status_badge(item["status"])}</p>',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f'<p class="meta">📍 {item["ort"]} · 🗓 {item["datum"]}</p>',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            "".join(badge(t) for t in item["tags"][:4]),
+            unsafe_allow_html=True
+        )
+        if st.button("Ansehen", key=key, use_container_width=True):
+            st.session_state.selected = item["id"]
+            navigate("detail")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# --- Seiten ---
+# 1. Startseite
+if st.session_state.page == "home":
+    st.markdown('<p class="title">🔍 Fundgrube</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Virtuelles Fundbüro – Verlorenes wiederfinden & Funde melden</p>', unsafe_allow_html=True)
+
+    db = st.session_state.db
+    offen = [i for i in db if i["status"] != "zurückgegeben"]
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Fundstücke", sum(1 for i in db if i["art"] == "gefunden"))
+    c2.metric("Vermisst", sum(1 for i in db if i["art"] == "vermisst"))
+    c3.metric("Offene Einträge", len(offen))
+
+    st.markdown("### Zuletzt hinzugefügt", unsafe_allow_html=True)
+    liste = sorted(db, key=lambda i: i["datum"], reverse=True)
+    if liste:
+        idx = st.session_state.carousel % len(liste)
+        akt = liste[idx]
+        l, m, r = st.columns([1, 6, 1])
+        with l:
+            if st.button("‹", use_container_width=True):
+                st.session_state.carousel = (idx - 1) % len(liste)
+                st.rerun()
+        with m:
+            st.image(akt["img"], use_container_width=True)
+            st.markdown(
+                f'<p style="margin: 8px 0 4px 0;"><strong>{akt["name"]}</strong> &nbsp; {status_badge(akt["status"])}</p>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                "".join(badge(t) for t in akt["tags"][:4]),
+                unsafe_allow_html=True
+            )
+        with r:
+            if st.button("›", use_container_width=True):
+                st.session_state.carousel = (idx + 1) % len(liste)
+                st.rerun()
+        st.write("")
+        c1, c2, c3 = st.columns([1, 4, 1])
+        with c2:
+            if st.button("🔍 Fundstück suchen", use_container_width=True):
+                navigate("suchen")
+            st.write("")
+            if st.button("↑ Fund melden", type="primary", use_container_width=True):
+                navigate("hochladen")
+    else:
+        st.info("Noch keine Einträge vorhanden. Melde deinen ersten Fund!")
+        if st.button("↑ Fund melden", type="primary", use_container_width=True):
+            navigate("hochladen")
+
+# 2. Suche
+elif st.session_state.page == "suchen":
+    if st.button("↩ Zurück", key="back_suchen"):
+        navigate("home")
+    st.markdown("### 🔍 Fundstück suchen")
+
+    query = st.text_input("Suchbegriff (Name, Tag, Ort …)", value="", key="search_input")
+    f1, f2 = st.columns(2)
+    with f1:
+        status_filter = st.selectbox("Status", ["Alle", "gefunden", "vermisst", "zurückgegeben"])
+    with f2:
+        kats = sorted({i["kategorie"] for i in st.session_state.db})
+        kat_filter = st.multiselect("Kategorie", kats)
+
+    erg = st.session_state.db
+    if query:
+        q = query.lower().strip()
+        erg = [
+            i for i in erg
+            if q in i["name"].lower()
+            or q in i["ort"].lower()
+            or any(q in t.lower() for t in i["tags"])
+        ]
+    if status_filter != "Alle":
+        erg = [i for i in erg if i["status"] == status_filter]
+    if kat_filter:
+        erg = [i for i in erg if i["kategorie"] in kat_filter]
+
+    st.write("")
+    if erg:
+        cols = st.columns(2)
+        for n, item in enumerate(erg):
+            with cols[n % 2]:
+                karte(item, key=f"k_{item['id']}")
+    else:
+        st.info("Kein Treffer – vielleicht magst du selbst einen Fund melden?")
+
+# 3. Hochladen
+elif st.session_state.page == "hochladen":
+    if st.button("↩ Zurück", key="back_hochladen"):
+        navigate("home")
+    st.markdown("### ↑ Fund melden / Vermisstenanzeige")
+
+    uploaded = st.file_uploader("Foto hochladen", type=["jpg", "jpeg", "png"])
+
+    if uploaded:
+        if uploaded.name != st.session_state.scanfile:
+            st.session_state.scan = None
+            st.session_state.scanfile = uploaded.name
+        bild_obj = Image.open(uploaded).convert("RGB")
+        st.image(bild_obj, use_container_width=True)
+
+        if st.button("🤖 Hochladen & KI-Scan", type="primary", use_container_width=True):
+            with st.spinner("KI-Modell analysiert das Bild …"):
+                st.session_state.scan = ki_scan(bild_obj)
+
+        if st.session_state.scan:
+            res = st.session_state.scan
+            st.markdown("#### 🤖 KI-Erkenntnis")
+            st.markdown(f"**Kategorie:** {res['kategorie']} · **Modell:** {res['modell']}")
+            st.progress(float(res["konfidenz"]))
+            st.caption(f"Konfidenz: {int(res['konfidenz'] * 100)} %")
+            st.markdown(
+                "".join(badge(t) for t in res["tags"]),
+                unsafe_allow_html=True
+            )
+
+            st.markdown("#### Angaben zum Eintrag")
+            name = st.text_input("Bezeichnung", value=res["kategorie"])
+            art = st.radio("Art", ["gefunden", "vermisst"], horizontal=True)
+            ort = st.text_input("Fundort / Verlustort")
+            datum = st.date_input("Datum", value=date.today())
+            kontakt = st.text_input("Kontakt (E-Mail / Telefon)")
+            beschreibung = st.text_area("Beschreibung")
+            tags_txt = st.text_input(
+                "Tags (KI-Vorschlag, anpassbar)",
+                value=", ".join(res["tags"])
+            )
+
+            if st.button("💾 In Fundgrube aufnehmen", type="primary", use_container_width=True):
+                if not name.strip() or not ort.strip():
+                    st.warning("Bitte mindestens Bezeichnung und Ort angeben.")
+                else:
+                    bid = uuid.uuid4().hex
+                    pfad = BILDORDNER / f"{bid}.png"
+                    bild_obj.save(pfad, format="PNG")
+                    eintrag = {
+                        "id": bid,
+                        "name": name.strip(),
+                        "art": art,
+                        "kategorie": res["kategorie"],
+                        "tags": [t.strip() for t in tags_txt.split(",") if t.strip()],
+                        "ort": ort.strip(),
+                        "datum": datum.isoformat(),
+                        "kontakt": kontakt.strip(),
+                        "beschreibung": beschreibung.strip(),
+                        "status": art,
+                        "img": str(pfad),
+                        "ki": res
+                    }
+                    st.session_state.db.insert(0, eintrag)
+                    speichere_db(st.session_state.db)
+                    st.session_state.scan = None
+                    st.session_state.scanfile = None
+                    st.session_state.selected = bid
+                    st.balloons()
+                    navigate("detail")
+    else:
+        st.markdown(
+            """
+            <div class="upload-box">
+                <p style="font-size: 18px; color: #6B52A3; margin-bottom: 10px;">📷 Foto hochladen</p>
+                <p style="color: #6b6b6b;">Die KI erkennt automatisch Kategorie, Farben & Muster.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+# 4. Detailansicht
+elif st.session_state.page == "detail":
+    if st.button("↩ Zurück", key="back_detail"):
+        navigate("suchen")
+
+    item = next((i for i in st.session_state.db if i["id"] == st.session_state.selected), None)
+    if item:
+        st.image(item["img"], use_container_width=True)
+        st.markdown(f"### {item['name']}")
+        st.markdown(
+            f"{status_badge(item['status'])} &nbsp; 📍 {item['ort']} · 🗓 {item['datum']}",
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            "".join(badge(t) for t in item["tags"]),
+            unsafe_allow_html=True
+        )
+        if item.get("beschreibung"):
+            st.write(item["beschreibung"])
+
+        with st.expander("🤖 KI-Analyse anzeigen"):
+            ki = item.get("ki", {})
+            st.markdown(f"**Erkannte Kategorie:** {ki.get('kategorie', '–')} · **Modell:** {ki.get('modell', '–')}")
+            st.progress(float(ki.get("konfidenz", 0.0)))
+            st.markdown(f"**Farben:** {', '.join(ki.get('farben', [])) or '–'}  ·  **Muster:** {', '.join(ki.get('muster', [])) or '–'}")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✉ Kontakt anzeigen", use_container_width=True):
+                st.session_state.zeigekontakt = not st.session_state.zeigekontakt
+        with c2:
+            if item["status"] != "zurückgegeben":
+                if st.button("✅ Als zurückgegeben markieren", use_container_width=True):
+                    item["status"] = "zurückgegeben"
+                    speichere_db(st.session_state.db)
+                    st.rerun()
+
+        if st.session_state.zeigekontakt:
+            st.success(f"Kontakt: {item.get('kontakt') or 'Kein Kontakt hinterlegt'}")
+
+        if st.button("🗑 Eintrag entfernen", use_container_width=True):
+            st.session_state.db = [i for i in st.session_state.db if i["id"] != item["id"]]
+            speichere_db(st.session_state.db)
+            navigate("home")
+    else:
+        st.warning("Eintrag nicht gefunden.")
+        if st.button("Zur Startseite", use_container_width=True):
+            navigate("home")
