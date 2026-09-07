@@ -1,4 +1,4 @@
--- coding: utf-8 --
+
 """
 Fundgrube – Virtuelles Fundbüro (Streamlit)
 KI-Implementierung: CLIP Zero-Shot (openai/clip-vit-base-patch32) aus fundgrube_app.py
