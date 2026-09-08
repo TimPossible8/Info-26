@@ -124,7 +124,7 @@ DB_DATEI = BASE / "fundgrubedb.json"
 # =====================================================================
 # --- EINSTELLUNGEN FÜR DEIN LOKALES .h5 MODELL ---
 # =====================================================================
-MODELL_PFAD = "keras_model.h5"  # <--- HIER den Namen deiner .h5 Datei eintragen
+MODELL_PFAD = "model/keras_model.h5"  # <--- HIER den Namen deiner .h5 Datei eintragen
 ZIEL_BILDGROESSE = (224, 224)   # <--- HIER die Größe eintragen, mit der dein Modell trainiert wurde (z.B. 224x224, 150x150)
 
 # Trage hier deine Klassen in GENAU der Reihenfolge ein, wie sie trainiert wurden!
