@@ -385,11 +385,17 @@ LABEL_DATEI = BASE / "model" / "labels.txt"
 @st.cache_resource(show_spinner=False)
 def load_ai_model():
     """
-    Lädt das lokale Keras-Modell aus:
+    Lädt das lokale Keras-Modell:
         model/keras_model.h5
 
-    Optional kann zusätzlich model/labels.txt vorhanden sein.
-    Die Datei sollte pro Zeile genau ein Klassenlabel enthalten.
+    Optional:
+        model/labels.txt
+
+    labels.txt:
+        Ein Label pro Zeile, z. B.
+        0 Pullover
+        1 Rucksack
+        2 Schuhe
     """
     import tensorflow as tf
 
@@ -398,7 +404,14 @@ def load_ai_model():
             f"Lokales KI-Modell nicht gefunden: {MODEL_DATEI}"
         )
 
-    model = tf.keras.models.load_model(MODEL_DATEI, compile=False)
+    # compile=False ist für reine Inferenz ausreichend.
+    # Manche ältere H5-Modelle enthalten Keras-Konfigurationen, die
+    # mit neueren Keras-Versionen inkompatibel sind. Der Aufruf wird
+    # deshalb bewusst möglichst kompatibel gehalten.
+    model = tf.keras.models.load_model(
+        str(MODEL_DATEI),
+        compile=False,
+    )
 
     labels = []
     if LABEL_DATEI.exists():
@@ -411,67 +424,94 @@ def load_ai_model():
     return model, labels
 
 
-def _keras_predict(model, image):
-    """Bereitet das Bild für das Keras-Modell vor und gibt die Wahrscheinlichkeiten zurück."""
-    import numpy as np
-
+def _get_model_input_size(model):
+    """Ermittelt Breite/Höhe des ersten Bildeingangs."""
     input_shape = model.input_shape
 
     if isinstance(input_shape, list):
         input_shape = input_shape[0]
 
-    if len(input_shape) != 4:
+    if not isinstance(input_shape, tuple) or len(input_shape) != 4:
         raise ValueError(
             f"Unerwartete Model-Eingabeform: {input_shape}. "
-            "Erwartet wird ein Bildmodell mit [batch, höhe, breite, kanäle]."
+            "Das Modell muss ein Bildmodell mit [Batch, Höhe, Breite, Kanäle] sein."
         )
 
-    height = input_shape[1] or 224
-    width = input_shape[2] or 224
+    height = input_shape[1]
+    width = input_shape[2]
 
-    img = image.resize((width, height))
+    if height is None or width is None:
+        height, width = 224, 224
+
+    return int(width), int(height)
+
+
+def _keras_predict(model, image):
+    """
+    Führt eine Vorhersage mit dem H5-Modell durch.
+
+    Die Normalisierung entspricht dem üblichen Teachable-Machine-
+    Keras-Modell: RGB-Werte werden von 0..255 auf -1..1 skaliert.
+    """
+    import numpy as np
+
+    width, height = _get_model_input_size(model)
+
+    img = image.convert("RGB").resize((width, height))
     arr = np.asarray(img, dtype=np.float32)
 
-    # Üblicher Teachable-Machine/Keras-Input: Werte von -1 bis 1.
+    # 0..255 -> -1..1
     arr = (arr / 127.5) - 1.0
     arr = np.expand_dims(arr, axis=0)
 
     prediction = model.predict(arr, verbose=0)
     prediction = np.asarray(prediction)
 
-    if prediction.ndim > 1:
+    # Keras gibt normalerweise [1, Klassen] zurück.
+    if prediction.ndim == 2:
         prediction = prediction[0]
+    elif prediction.ndim != 1:
+        prediction = np.squeeze(prediction)
 
-    # Falls das Modell Logits statt Wahrscheinlichkeiten liefert.
+    if prediction.ndim != 1 or prediction.size == 0:
+        raise ValueError(
+            f"Unerwartete Ausgabeform des Modells: {prediction.shape}"
+        )
+
+    prediction = prediction.astype(np.float64)
+
+    # In manchen Modellen kommen bereits Wahrscheinlichkeiten zurück,
+    # in anderen Logits. Falls nötig, Softmax manuell berechnen.
+    total = float(np.sum(prediction))
+
     if (
         np.any(prediction < 0)
         or np.any(prediction > 1)
-        or not np.isclose(np.sum(prediction), 1.0, atol=1e-3)
+        or not np.isclose(total, 1.0, atol=1e-3)
     ):
-        prediction = tf_softmax(prediction)
+        prediction = prediction - np.max(prediction)
+        exp_values = np.exp(prediction)
+        exp_sum = np.sum(exp_values)
+
+        if exp_sum <= 0 or not np.isfinite(exp_sum):
+            raise ValueError("Ungültige Modell-Ausgabe.")
+
+        prediction = exp_values / exp_sum
 
     return prediction
 
 
-def tf_softmax(values):
-    """Softmax ohne TensorFlow-Abhängigkeit außerhalb des eigentlichen Model-Loads."""
-    import numpy as np
-
-    values = np.asarray(values, dtype=np.float64)
-    values = values - np.max(values)
-    exp_values = np.exp(values)
-    return exp_values / np.sum(exp_values)
-
-
 def _label_for_index(index, labels):
-    """Ermittelt das Label einer Modellklasse."""
+    """Liest ein Label aus labels.txt, einschließlich Teachable-Machine-Format."""
     if index < len(labels):
-        label = labels[index]
+        label = labels[index].strip()
 
-        # Teachable Machine labels.txt kann z. B. '0 Pullover' enthalten.
-        parts = label.split(maxsplit=1)
-        if len(parts) == 2 and parts[0].isdigit():
-            return parts[1].strip()
+        # Unterstützt z. B.:
+        # "0 Pullover"
+        # "1 Rucksack"
+        match = re.match(r"^\s*\d+\s+(.*)$", label)
+        if match:
+            return match.group(1).strip()
 
         return label
 
@@ -480,8 +520,8 @@ def _label_for_index(index, labels):
 
 def _find_matching_label(label):
     """
-    Übersetzt ein Modelllabel möglichst passend in die Anzeige-Kategorie.
-    Falls kein Mapping existiert, wird das Modelllabel direkt verwendet.
+    Ordnet ein Modelllabel einer bekannten Kategorie zu.
+    Unbekannte Modelllabels werden unverändert übernommen.
     """
     normalized = label.strip().lower()
 
@@ -494,59 +534,63 @@ def _find_matching_label(label):
 
 def run_ai_scan(image: Image.Image):
     """
-    Analysiert das Bild mit dem lokalen Keras/H5-Modell.
+    Analysiert ein Bild mit dem lokalen Keras/H5-Modell.
 
-    Das H5-Modell bestimmt die Hauptklasse. Farbe und Stil werden nur dann
-    übernommen, wenn das Modell passende Klassen dafür besitzt.
+    Das Modell liefert die Hauptklasse. Farbe und Stil werden zusätzlich
+    aus den Modellklassen übernommen, falls labels.txt entsprechende
+    Klassen enthält.
     """
     try:
         model, labels = load_ai_model()
     except Exception as exc:
         return None, (
             "Lokales KI-Modell konnte nicht geladen werden. "
-            "Lege 'model/keras_model.h5' neben diese Python-Datei und "
-            "installiere TensorFlow (pip install tensorflow). "
-            f"Details: {exc}"
+            "Prüfe 'model/keras_model.h5' und die TensorFlow-Version. "
+            "Details: " + str(exc)
         )
 
     try:
+        import numpy as np
+
         probabilities = _keras_predict(model, image)
 
-        if len(probabilities) == 0:
-            raise ValueError("Das Modell hat keine Klassenvorhersagen geliefert.")
-
-        best_index = int(probabilities.argmax())
+        best_index = int(np.argmax(probabilities))
         best_score = float(probabilities[best_index])
+
         raw_label = _label_for_index(best_index, labels)
         category = _find_matching_label(raw_label)
 
-        # Die übrigen Klassen werden für Farbe/Stil durchsucht, sofern
-        # entsprechende Labels im H5-Modell vorhanden sind.
-        color_matches = {}
+        # Farbe/Stil nur verwenden, wenn das Modell solche Klassen besitzt.
+        color_matches = []
         style_matches = []
 
         for index, probability in enumerate(probabilities):
             label = _label_for_index(index, labels)
-            normalized = label.lower()
+            normalized = label.strip().lower()
+            score = float(probability)
 
             if normalized in AI_LABELS["color"]:
-                color_matches[normalized] = float(probability)
+                color_matches.append(
+                    (AI_LABELS["color"][normalized], score)
+                )
 
             for key, value in AI_LABELS["style"].items():
                 if normalized == key.lower() or normalized == value.lower():
-                    style_matches.append((value, float(probability)))
+                    style_matches.append((value, score))
 
         farbe = None
         farbe_score = 0.0
-        if color_matches:
-            color_label, farbe_score = max(
-                color_matches.items(), key=lambda x: x[1]
-            )
-            farbe = AI_LABELS["color"][color_label]
 
-        style_matches.sort(key=lambda x: x[1], reverse=True)
+        if color_matches:
+            farbe, farbe_score = max(
+                color_matches,
+                key=lambda item: item[1],
+            )
+
+        style_matches.sort(key=lambda item: item[1], reverse=True)
         stil = [
-            value for value, score in style_matches[:2]
+            value
+            for value, score in style_matches[:2]
             if score >= 0.22
         ]
 
@@ -560,18 +604,24 @@ def run_ai_scan(image: Image.Image):
             "modell": "keras-h5",
         }
 
+        # Tags erzeugen
         kandidaten = [category.lower()]
+
         if farbe:
-            kandidaten.append(farbe)
+            kandidaten.append(farbe.lower())
+
         kandidaten += [s.lower() for s in stil]
 
-        tags, gesehen = [], set()
+        tags = []
+        gesehen = set()
+
         for tag in kandidaten:
             if tag and tag not in gesehen:
                 gesehen.add(tag)
                 tags.append(tag)
 
         ergebnis["tags"] = tags[:5]
+
         return ergebnis, None
 
     except Exception as exc:
