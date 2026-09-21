@@ -2,10 +2,11 @@
 """
 Fundgrube – Virtuelles Fundbüro
 ================================
-Streamlit-App mit lokalem Keras-H5-Modell (Teachable-Machine-kompatibel)
-für die Erkennung von Kleidungsstücken und mobil optimiertem Layout.
+Streamlit-App mit UI aus fundgrubeneuglm.py (mobil optimiertes Layout)
+und lokalem Keras-H5-Modell (Teachable-Machine-kompatibel) für die
+Erkennung von Kleidungsstücken.
 
-Modell-Pfad (relativ zur App bzw. CWD):
+Modell-Pfad (relativ zur App):
     model/keras_model.h5
 Optional:
     model/labels.txt   (eine Klasse pro Zeile, Format "0 Classname" oder nur "Classname")
@@ -14,7 +15,7 @@ Installation:
     pip install streamlit pillow tensorflow numpy
 
 Start:
-    streamlit run fundgrube_keras.py
+    streamlit run fundgrube_keras_ui.py
 """
 
 import base64
@@ -102,48 +103,11 @@ st.markdown(
                 !important;
         }
 
-        /* --- Kompakter vertikaler Rhythmus
-               (ersetzt die früheren st.write("")-Spacer) --- */
-        /* --- Robustes Layout: Elemente dürfen sich nie überlagern --- */
-        [data-testid="stVerticalBlock"] {
-            gap: .8rem !important;
-            min-width: 0 !important;
-        }
-
-        [data-testid="stElementContainer"] {
-            margin-bottom: 0 !important;
-            min-width: 0 !important;
-            position: relative;
-        }
-
-        [data-testid="stHorizontalBlock"] {
-            gap: .7rem !important;
-            align-items: stretch !important;
-            min-width: 0 !important;
-            flex-wrap: wrap !important;
-        }
-
-        [data-testid="column"] {
-            min-width: 0 !important;
-            width: auto !important;
-            flex: 1 1 0 !important;
-        }
-
-        /* Streamlit-Widgets innerhalb von Spalten nicht aus der Spalte herausragen lassen */
-        [data-testid="column"] > div,
-        [data-testid="column"] [data-testid="stElementContainer"] {
-            max-width: 100% !important;
-            min-width: 0 !important;
-        }
-
-        /* Lange Texte niemals über andere UI-Elemente laufen lassen */
-        button, input, textarea, select,
-        [data-testid="stMarkdownContainer"],
-        [data-testid="stCaptionContainer"] {
-            max-width: 100% !important;
-            overflow-wrap: anywhere;
-            word-break: normal;
-        }
+        /* --- Kompakter vertikaler Rhythmus --- */
+        [data-testid="stVerticalBlock"] { gap: .55rem !important; }
+        [data-testid="stElementContainer"] { margin-bottom: 0 !important; }
+        [data-testid="stHorizontalBlock"] { gap: .5rem !important; }
+        [data-testid="column"] { min-width: 0 !important; }
 
         /* --- Marke --- */
         .brand {
@@ -169,14 +133,8 @@ st.markdown(
             font-weight: 900;
             letter-spacing: -.4px;
             color: var(--text);
-            line-height: 1.15;
-            min-height: 46px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            line-height: 46px;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         .section-label {
@@ -192,19 +150,9 @@ st.markdown(
             z-index: 3;
         }
 
-        /* --- Statistikleiste: Flex-Row, teilt den Platz automatisch auf --- */
-        .stats-row {
-            display: flex;
-            gap: .55rem;
-            margin-top: .1rem;
-            width: 100%;
-            align-items: stretch;
-            flex-wrap: wrap;
-        }
-        .stats-row .stat-card {
-            flex: 1 1 120px;
-            min-width: 0;
-        }
+        /* --- Statistikleiste --- */
+        .stats-row { display: flex; gap: .45rem; margin-top: .1rem; }
+        .stats-row .stat-card { flex: 1 1 0; min-width: 0; }
         .stat-card {
             background: rgba(255,255,255,.78);
             border: 1px solid var(--border);
@@ -225,12 +173,9 @@ st.markdown(
         .hero-card {
             background: var(--surface);
             border-radius: 25px;
-            padding: .4rem .4rem .7rem;
+            padding: .4rem .4rem .6rem;
             box-shadow: var(--shadow);
             border: 1px solid rgba(107,82,163,.08);
-            width: 100%;
-            overflow: hidden;
-            position: relative;
         }
         .hero-card img {
             width: 100%;
@@ -242,12 +187,9 @@ st.markdown(
         .grid-card {
             background: var(--surface);
             border-radius: 18px;
-            padding: .3rem .3rem .65rem;
+            padding: .3rem .3rem .55rem;
             box-shadow: var(--shadow);
             border: 1px solid rgba(107,82,163,.08);
-            width: 100%;
-            overflow: hidden;
-            position: relative;
         }
         .grid-card img {
             width: 100%;
@@ -261,10 +203,8 @@ st.markdown(
             font-size: clamp(1.05rem, 4.6vw, 1.25rem);
             font-weight: 850;
             color: var(--text);
-            margin: .6rem .35rem .15rem;
-            line-height: 1.3;
+            margin: .5rem .35rem .05rem;
             overflow-wrap: anywhere;
-            word-break: break-word;
         }
         .meta-zeile { margin: .05rem .35rem .2rem; font-size: .8rem; }
         .grid-caption {
@@ -292,24 +232,19 @@ st.markdown(
 
         .status {
             display: inline-block;
-            vertical-align: middle;
             border-radius: 999px;
             padding: .22rem .65rem;
-            margin: .15rem 0 .15rem .3rem;
+            margin-left: .3rem;
             font-size: .66rem;
-            line-height: 1.2;
             font-weight: 800;
+            vertical-align: 2px;
             white-space: nowrap;
-            max-width: 100%;
         }
         .status-gefunden       { background: #DFF5E1; color: #2E7D32; }
         .status-vermisst       { background: #FDE3E3; color: #C62828; }
         .status-zurueckgegeben { background: #E3E3E3; color: #555; }
 
-        /* --- Suchfeld: Lavendel-Schale um das Eingabefeld.
-             Der unsichtbare Marker steht direkt vor dem Feld; per
-             Nachbar-Selektor erhält das folgende Feld die Schale.
-             (Ohne :has-Support fällt es aufs normale Pill-Design zurück.) --- */
+        /* --- Suchfeld: Lavendel-Schale um das Eingabefeld --- */
         .search-marker { display: none; }
         div:has(> .search-marker) + [data-testid="stTextInput"],
         [data-testid="stElementContainer"]:has(.search-marker)
@@ -350,15 +285,8 @@ st.markdown(
         .divider { height: 1px; background: var(--border); margin: .65rem 0; }
 
         /* --- Buttons: Touch-freundlich (min. 46 px), volle Breite --- */
-        div.stButton {
-            width: 100%;
-            min-width: 0;
-            margin: 0 !important;
-        }
-
         div.stButton > button {
             width: 100%;
-            min-width: 0;
             min-height: 46px;
             border-radius: 999px !important;
             border: 0 !important;
@@ -368,18 +296,13 @@ st.markdown(
             padding: .45rem .8rem !important;
             transition: transform .12s ease, box-shadow .12s ease;
         }
-        div.stButton > button:hover {
-            box-shadow: 0 8px 18px rgba(107,82,163,.18);
-        }
-        div.stButton > button:active {
-            transform: scale(.985);
-        }
+        div.stButton > button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(107,82,163,.18); }
+        div.stButton > button:active { transform: scale(.97); }
         div.stButton > button[kind="primary"] { background: var(--purple) !important; color: #fff !important; }
         div.stButton > button[kind="secondary"],
         div.stButton > button.secondary { background: var(--lavender) !important; color: var(--purple) !important; }
 
-        /* --- Widgets ---
-           16 px Schrift in Feldern → iOS-Safari zoomt beim Antippen nicht automatisch rein. */
+        /* --- Widgets --- */
         [data-testid="stTextInput"] input, .stTextInput input,
         [data-testid="stDateInput"] input, .stDateInput input,
         div[data-baseweb="select"] input {
@@ -432,8 +355,7 @@ st.markdown(
         }
         [data-testid="stAlert"] { border-radius: 16px; font-size: .85rem; }
 
-        /* --- Foto-Uploader: eine kompakte Fläche
-               (ersetzt Widget + zusätzliche Deko-Box) --- */
+        /* --- Foto-Uploader --- */
         .stFileUploader, [data-testid="stFileUploader"] {
             background: var(--lavender);
             border-radius: 22px;
@@ -449,9 +371,6 @@ st.markdown(
             border: 0 !important;
             border-radius: 15px !important;
             min-height: 112px !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            overflow: hidden !important;
         }
         [data-testid="stFileUploaderDropzone"] button {
             border-radius: 999px !important;
@@ -472,8 +391,7 @@ st.markdown(
             font-size: .68rem !important;
         }
 
-        /* Bildvorschau beim Upload (einzige verbleibende st.image-Nutzung):
-           feste Proportion, maximal ca. halber Bildschirm hoch */
+        /* Bildvorschau beim Upload */
         .stImage img, [data-testid="stImage"] img {
             width: 100%;
             aspect-ratio: 4 / 3;
@@ -482,63 +400,12 @@ st.markdown(
             max-height: 48vh;
         }
 
-        /* --- Responsive Schutz gegen Überlappungen --- */
-        @media (max-width: 520px) {
-            [data-testid="stHorizontalBlock"] {
-                flex-wrap: nowrap !important;
-            }
-
-            [data-testid="stHorizontalBlock"] > [data-testid="column"] {
-                min-width: 0 !important;
-            }
-
-            .stats-row {
-                flex-wrap: nowrap;
-            }
-
-            .status {
-                white-space: normal;
-                text-align: center;
-            }
-
-            .brand-kompakt {
-                font-size: .98rem;
-            }
-
-            div.stButton > button {
-                min-height: 46px !important;
-                padding-left: .55rem !important;
-                padding-right: .55rem !important;
-            }
-        }
-
-        @media (max-width: 380px) {
-            [data-testid="stHorizontalBlock"] {
-                gap: .45rem !important;
-            }
-
-            .stats-row {
-                gap: .35rem;
-            }
-
-            .stats-row .stat-card {
-                flex-basis: 0;
-            }
-
-            .status {
-                font-size: .6rem;
-                padding-left: .5rem;
-                padding-right: .5rem;
-            }
-        }
-
         /* --- Feinanpassung für sehr schmale / flache Fenster --- */
         @media (max-width: 380px) {
             .stat-card { padding: .45rem .2rem; }
             .grid-card { padding: .25rem .25rem .5rem; }
             .ai-card { padding: .65rem .7rem; }
         }
-
         @media (max-height: 700px) and (max-width: 560px) {
             .hero-card img { aspect-ratio: 1.7 / 1; }
             .stImage img, [data-testid="stImage"] img { aspect-ratio: 1.7 / 1; }
@@ -556,7 +423,7 @@ BILDORDNER = BASE / "fundgrubebilder"
 BILDORDNER.mkdir(parents=True, exist_ok=True)
 DB_DATEI = BASE / "fundgrubedb.json"
 
-# Lokales Keras-Modell (GitHub-Struktur: model/keras_model.h5)
+# Lokales Keras-Modell (Teachable-Machine-Struktur)
 MODEL_DIR = BASE / "model"
 MODEL_PATH = MODEL_DIR / "keras_model.h5"
 LABELS_PATH = MODEL_DIR / "labels.txt"
@@ -650,7 +517,7 @@ def run_ai_scan(image: Image.Image):
 
     Rückgabe-Format bleibt kompatibel zur restlichen App
     (kategorie, konfidenz, farbe, stil, tags, modell).
-    Farbe und Stil werden hier nicht vom H5-Modell geliefert –
+    Farbe und Stil werden vom H5-Modell nicht geliefert –
     sie können manuell ergänzt werden.
     """
     try:
@@ -704,7 +571,7 @@ def run_ai_scan(image: Image.Image):
         ergebnis["kategorie"] = kategorie_anzeige
         ergebnis["konfidenz"] = round(best_score, 2)
 
-        # Top-2 als zusätzliche Tags
+        # Top-3 als zusätzliche Tags
         top_indices = np.argsort(scores)[::-1][:3]
         tags = []
         for idx in top_indices:
@@ -735,7 +602,7 @@ def basis_scan():
     }
 
 # =========================================================
-# SEED-DATEN (im neuen KI-Format)
+# SEED-DATEN (im KI-Format)
 # =========================================================
 SEED = [
     {
@@ -915,8 +782,7 @@ def pills_html(tags, limit=6):
 @st.cache_data(show_spinner=False)
 def bild_quelle(img_str, max_seite=800):
     """Liefert eine <img>-taugliche Bildquelle:
-    Remote-URLs direkt, lokale Dateien als kompakte, gecachte Data-URI
-    (automatisch auf max. 800 px verkleinert → schnell & platzsparend)."""
+    Remote-URLs direkt, lokale Dateien als kompakte, gecachte Data-URI."""
     if not img_str:
         return ""
     if str(img_str).startswith(("http://", "https://", "data:")):
@@ -966,7 +832,8 @@ def grid_card_html(item):
 
 
 def ai_karte_scan_html(res):
-    """KI-Ergebnis als HTML-Karte (Upload-Seite)."""
+    """KI-Ergebnis als HTML-Karte (Upload-Seite).
+    Robust gegenüber farbe=None (Keras-H5 liefert keine Farberkennung)."""
     prozent = int(max(0.0, min(1.0, float(res.get("konfidenz") or 0))) * 100)
     farbe = res.get("farbe")
     stil = res.get("stil") or []
@@ -1065,7 +932,7 @@ def render_home():
             st.session_state.carousel = (idx + 1) % len(liste)
             st.rerun()
 
-    # Hauptaktionen nebeneinander → platzsparend, direkt erreichbar
+    # Hauptaktionen nebeneinander
     links, rechts = st.columns(2)
     with links:
         if st.button("⌕  Suchen", key="home_search", type="secondary"):
@@ -1170,8 +1037,7 @@ def render_hochladen():
         st.error("Das Bild konnte nicht geöffnet werden.")
         return
 
-    # Kompakte Vorschau: verkleinerte Kopie → schnellere Reruns,
-    # Proportion + Maximalhöhe regelt das CSS (max. ~halber Bildschirm)
+    # Kompakte Vorschau: verkleinerte Kopie → schnellere Reruns
     vorschau = bild_obj.copy()
     vorschau.thumbnail((800, 800))
     st.image(vorschau, use_container_width=True)
