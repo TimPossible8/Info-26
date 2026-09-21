@@ -1,5 +1,0 @@
-0 Hose
-1 T-shirt
-2 Schuhe
-3 Socken
-4 Sonstiges
