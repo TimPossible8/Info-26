@@ -72,7 +72,7 @@ st.markdown(
                 var(--bg);
         }
 
-        /* --- Streamlit-Chrome ausblenden → mehr Platz für Inhalte --- */
+        /* --- Streamlit-Chrome ausblenden --- */
         #MainMenu, header, footer,
         [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"] {
             display: none !important;
@@ -80,8 +80,7 @@ st.markdown(
             min-height: 0 !important;
         }
 
-        /* --- Inhaltsbühne: handybreit, zentriert, fluide Ränder,
-               Safe-Area unten (z. B. iPhone-Home-Indikator) --- */
+        /* --- Inhaltsbühne --- */
         .block-container,
         .main .block-container,
         [data-testid="stAppViewBlockContainer"],
@@ -96,12 +95,32 @@ st.markdown(
                 !important;
         }
 
-        /* --- Kompakter vertikaler Rhythmus
-               (ersetzt die früheren st.write("")-Spacer) --- */
+        /* --- FIX: EINheitlicher vertikaler Rhythmus.
+               Streamlit-Elemente bringen je nach Version eigene Außenabstände
+               mit – zusammen mit dem Gap des VerticalBlock führte das zu
+               aneinanderklebenden bzw. verschobenen Elementen.
+               Jetzt: alle Element-Margins auf 0, der Gap regelt ALLE Abstände. --- */
         [data-testid="stVerticalBlock"] { gap: .55rem !important; }
-        [data-testid="stElementContainer"] { margin-bottom: 0 !important; }
+        [data-testid="stElementContainer"],
+        [data-testid="stMarkdownContainer"],
+        [data-testid="stImage"],
+        [data-testid="stAlert"],
+        [data-testid="stFileUploader"],
+        [data-testid="stTextInput"],
+        [data-testid="stTextArea"],
+        [data-testid="stDateInput"],
+        [data-testid="stSelectbox"],
+        [data-testid="stRadio"],
+        div.stButton { margin: 0 !important; }
+        [data-testid="stMarkdownContainer"] > p { margin: 0 !important; }
+        [data-testid="stWidgetLabel"] { padding-bottom: .15rem !important; }
+
+        /* --- FIX: Spalten müssen schrumpfen dürfen. Ohne min-width: 0
+               drücken breite Inhalte (Bilder, Karten) Nachbar-Spalten
+               beiseite. Der alte Selektor kannte nur den veralteten
+               Testid "column" – aktuelle Versionen nutzen "stColumn". --- */
         [data-testid="stHorizontalBlock"] { gap: .5rem !important; }
-        [data-testid="column"] { min-width: 0 !important; }
+        [data-testid="column"], [data-testid="stColumn"] { min-width: 0 !important; }
 
         /* --- Marke --- */
         .brand {
@@ -120,15 +139,22 @@ st.markdown(
             font-weight: 700;
             margin: 0 0 .25rem;
         }
-        /* Kompakte App-Kopfzeile auf Unterseiten (Titel bündig zum Zurück-Button) */
+
+        /* --- FIX: Kompakte App-Kopfzeile. Statt des fragilen Tricks mit
+               fester line-height wird flexibel zentriert. Der Titel ist
+               exakt so hoch wie der Zurück-Button (46 px) und kann dank
+               overflow: hidden nie in den Button hineinragen. --- */
         .brand-kompakt {
-            text-align: center;
-            font-size: 1.02rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 46px;
+            font-size: clamp(.95rem, 4vw, 1.05rem);
             font-weight: 900;
             letter-spacing: -.4px;
             color: var(--text);
-            line-height: 46px;
             white-space: nowrap;
+            overflow: hidden;
         }
 
         .section-label {
@@ -140,11 +166,9 @@ st.markdown(
             font-size: .7rem;
             font-weight: 800;
             margin: .3rem 0 .05rem .05rem;
-            position: relative;
-            z-index: 3;
         }
 
-        /* --- Statistikleiste: Flex-Row, teilt den Platz automatisch auf --- */
+        /* --- Statistikleiste --- */
         .stats-row { display: flex; gap: .45rem; margin-top: .1rem; }
         .stats-row .stat-card { flex: 1 1 0; min-width: 0; }
         .stat-card {
@@ -163,7 +187,7 @@ st.markdown(
         }
         .stat-label { color: var(--muted); font-size: .66rem; }
 
-        /* --- Echte HTML-Karten (Bild + Infos in einer Fläche) --- */
+        /* --- Echte HTML-Karten --- */
         .hero-card {
             background: var(--surface);
             border-radius: 25px;
@@ -193,21 +217,32 @@ st.markdown(
             display: block;
         }
 
+        /* --- FIX: Titelzeilen als Flex-Row mit Umbruch. Vorher war das
+               Status-Badge inline mit vertical-align hinter dem Titel und
+               lief bei langen Namen in den Text / die Nachbarzeile. --- */
         .item-title {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: .2rem .3rem;
             font-size: clamp(1.05rem, 4.6vw, 1.25rem);
             font-weight: 850;
             color: var(--text);
             margin: .5rem .35rem .05rem;
             overflow-wrap: anywhere;
         }
-        .meta-zeile { margin: .05rem .35rem .2rem; font-size: .8rem; }
         .grid-caption {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: .15rem .25rem;
             font-size: clamp(.74rem, 3.2vw, .84rem);
             font-weight: 800;
             color: var(--text);
             margin: .3rem .35rem .05rem;
             overflow-wrap: anywhere;
         }
+        .meta-zeile { margin: .05rem .35rem .2rem; font-size: .8rem; }
         .grid-meta { margin: .05rem .35rem .15rem; font-size: .72rem; }
         .muted { color: var(--muted); font-size: .85rem; }
         .beschreibung { margin: .15rem .35rem .2rem; }
@@ -224,26 +259,27 @@ st.markdown(
             font-weight: 750;
         }
 
+        /* --- FIX: Badge ohne eigenen Außenabstand (Abstand macht die
+               gap der Titel-Flex-Row), bleibt bei langen Titeln ganz. --- */
         .status {
             display: inline-block;
             border-radius: 999px;
             padding: .22rem .65rem;
-            margin-left: .3rem;
             font-size: .66rem;
             font-weight: 800;
-            vertical-align: 2px;
             white-space: nowrap;
+            flex: 0 0 auto;
         }
         .status-gefunden       { background: #DFF5E1; color: #2E7D32; }
         .status-vermisst       { background: #FDE3E3; color: #C62828; }
         .status-zurueckgegeben { background: #E3E3E3; color: #555; }
 
-        /* --- Suchfeld: Lavendel-Schale um das Eingabefeld.
-             Der unsichtbare Marker steht direkt vor dem Feld; per
-             Nachbar-Selektor erhält das folgende Feld die Schale.
-             (Ohne :has-Support fällt es aufs normale Pill-Design zurück.) --- */
+        /* --- Suchfeld-Schale: deckt jetzt ALLE Wrapping-Varianten ab
+               (Marker direkt, in einem <p> oder im ElementContainer). --- */
         .search-marker { display: none; }
-        div:has(> .search-marker) + [data-testid="stTextInput"],
+        div:has(.search-marker) + [data-testid="stTextInput"],
+        div:has(.search-marker) + [data-testid="stElementContainer"]:has([data-testid="stTextInput"]),
+        [data-testid="stElementContainer"]:has(.search-marker) + [data-testid="stTextInput"],
         [data-testid="stElementContainer"]:has(.search-marker)
             + [data-testid="stElementContainer"]:has([data-testid="stTextInput"]) {
             background: var(--lavender);
@@ -251,7 +287,9 @@ st.markdown(
             padding: .3rem .5rem;
             box-shadow: var(--shadow);
         }
-        div:has(> .search-marker) + [data-testid="stTextInput"] input,
+        div:has(.search-marker) + [data-testid="stTextInput"] input,
+        div:has(.search-marker) + [data-testid="stElementContainer"] [data-testid="stTextInput"] input,
+        [data-testid="stElementContainer"]:has(.search-marker) + [data-testid="stTextInput"] input,
         [data-testid="stElementContainer"]:has(.search-marker)
             + [data-testid="stElementContainer"] [data-testid="stTextInput"] input {
             box-shadow: none !important;
@@ -281,7 +319,7 @@ st.markdown(
         .confidence-fill { background: linear-gradient(90deg, var(--purple), var(--lavender-2)); height: 100%; border-radius: 999px; }
         .divider { height: 1px; background: var(--border); margin: .65rem 0; }
 
-        /* --- Buttons: Touch-freundlich (min. 46 px), volle Breite --- */
+        /* --- Buttons --- */
         div.stButton > button {
             width: 100%;
             min-height: 46px;
@@ -295,22 +333,41 @@ st.markdown(
         }
         div.stButton > button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(107,82,163,.18); }
         div.stButton > button:active { transform: scale(.97); }
-        div.stButton > button[kind="primary"] { background: var(--purple) !important; color: #fff !important; }
+        div.stButton > button[kind="primary"],
+        div.stButton > button.primary { background: var(--purple) !important; color: #fff !important; }
         div.stButton > button[kind="secondary"],
         div.stButton > button.secondary { background: var(--lavender) !important; color: var(--purple) !important; }
 
         /* --- Widgets ---
-           16 px Schrift in Feldern → iOS-Safari zoomt beim Antippen nicht automatisch rein. */
+           FIX gegen "Feld im Feld": Streamlit/BaseWeb setzt den Rahmen je
+           nach Version auf den Wrapper (data-baseweb="input") ODER auf das
+           echte <input>. Der Wrapper wird deshalb immer transparent
+           geschaltet – die Pill-Optik liegt auf genau einer Ebene. */
+        [data-testid="stTextInput"] div[data-baseweb="input"],
+        [data-testid="stDateInput"] div[data-baseweb="input"] {
+            border: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+        }
+
+        /* 16 px Schrift in Feldern → iOS-Safari zoomt beim Antippen nicht rein. */
         [data-testid="stTextInput"] input, .stTextInput input,
-        [data-testid="stDateInput"] input, .stDateInput input,
-        div[data-baseweb="select"] input {
+        [data-testid="stDateInput"] input, .stDateInput input {
             border-radius: 999px !important;
             border: 0 !important;
             background: var(--surface) !important;
             padding: .7rem 1rem !important;
             box-shadow: var(--shadow);
             font-size: 16px !important;
+            width: 100% !important;
         }
+        /* FIX Datumsfeld: rechts Platz für das Kalender-Icon,
+           damit Icon und Eingabetext sich nicht überlagern */
+        [data-testid="stDateInput"] input, .stDateInput input {
+            padding: .7rem 2.7rem .7rem 1rem !important;
+        }
+
         [data-testid="stTextArea"] textarea, .stTextArea textarea {
             border-radius: 18px !important;
             border: 0 !important;
@@ -322,13 +379,25 @@ st.markdown(
         }
         input::placeholder, textarea::placeholder { color: var(--muted) !important; }
 
+        /* FIX Selectbox: Pill-Optik liegt auf dem Control, das interne
+           Eingabefeld ist transparent – kein doppelter Rahmen mehr. */
         div[data-baseweb="select"] > div {
             border-radius: 999px !important;
             border: 1px solid var(--border) !important;
             background: var(--surface) !important;
             box-shadow: var(--shadow);
             min-height: 46px;
+            padding: 0 .9rem !important;
         }
+        div[data-baseweb="select"] input {
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: .5rem .2rem .5rem 0 !important;
+            font-size: 16px !important;
+        }
+
         [data-testid="stTextInput"] label,
         [data-testid="stTextArea"] label,
         [data-testid="stDateInput"] label,
@@ -339,22 +408,27 @@ st.markdown(
             color: var(--purple) !important;
             margin-bottom: .15rem !important;
         }
+
+        /* FIX Radio-Gruppe: saubere Umbruch-Abstände statt
+           aneinanderklebender Optionen */
         div[role="radiogroup"] {
             background: var(--surface-soft);
             border-radius: 999px;
             padding: .22rem .3rem;
             flex-wrap: wrap;
+            row-gap: .25rem;
+            column-gap: .3rem;
         }
         div[role="radiogroup"] label {
             padding: .35rem .9rem;
             border-radius: 999px;
             font-size: .82rem;
             font-weight: 700;
+            white-space: nowrap;
         }
         [data-testid="stAlert"] { border-radius: 16px; font-size: .85rem; }
 
-        /* --- Foto-Uploader: eine kompakte Fläche
-               (ersetzt Widget + zusätzliche Deko-Box) --- */
+        /* --- Foto-Uploader --- */
         .stFileUploader, [data-testid="stFileUploader"] {
             background: var(--lavender);
             border-radius: 22px;
@@ -363,6 +437,7 @@ st.markdown(
         .stFileUploader section, [data-testid="stFileUploader"] section {
             border: 0 !important;
             background: transparent !important;
+            width: 100% !important;
         }
         .stFileUploader label, [data-testid="stFileUploader"] label { display: none !important; }
         [data-testid="stFileUploaderDropzone"] {
@@ -370,7 +445,9 @@ st.markdown(
             border: 0 !important;
             border-radius: 15px !important;
             min-height: 112px !important;
+            width: 100% !important;
         }
+        /* ältere Streamlit-Versionen: "Browse files"-Button in der Dropzone */
         [data-testid="stFileUploaderDropzone"] button {
             border-radius: 999px !important;
             border: 0 !important;
@@ -379,6 +456,14 @@ st.markdown(
             font-weight: 800 !important;
             min-height: 44px !important;
             padding: .4rem 1.3rem !important;
+        }
+        /* neuere Streamlit-Versionen: Dropzone ist selbst ein <button> */
+        button[data-testid="stFileUploaderDropzone"] { color: var(--purple) !important; }
+        button[data-testid="stFileUploaderDropzone"] p,
+        button[data-testid="stFileUploaderDropzone"] b,
+        button[data-testid="stFileUploaderDropzone"] strong {
+            color: var(--purple) !important;
+            font-weight: 700 !important;
         }
         [data-testid="stFileUploaderDropzoneInstructions"] {
             color: var(--purple) !important;
@@ -390,8 +475,7 @@ st.markdown(
             font-size: .68rem !important;
         }
 
-        /* Bildvorschau beim Upload (einzige verbleibende st.image-Nutzung):
-           feste Proportion, maximal ca. halber Bildschirm hoch */
+        /* Bildvorschau beim Upload */
         .stImage img, [data-testid="stImage"] img {
             width: 100%;
             aspect-ratio: 4 / 3;
@@ -748,7 +832,6 @@ def go(page):
     st.session_state.zeigekontakt = False
     st.rerun()
 
-
 def header():
     """Kopfzeile: großes Branding auf der Startseite,
     kompakte App-Kopfzeile mit Zurück-Pfeil auf Unterseiten."""
@@ -759,7 +842,15 @@ def header():
             unsafe_allow_html=True,
         )
     else:
-        links, mitte, rechts = st.columns([1, 3, 1])
+        # Spalten vertikal zentrieren, falls die Streamlit-Version
+        # vertical_alignment unterstützt (sonst fängt die feste
+        # 46-px-Höhe im CSS die Ausrichtung ab).
+        try:
+            links, mitte, rechts = st.columns(
+                [1, 3, 1], gap="small", vertical_alignment="center"
+            )
+        except TypeError:
+            links, mitte, rechts = st.columns([1, 3, 1], gap="small")
         with links:
             if st.button("←", key="global_back"):
                 go("home")
