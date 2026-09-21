@@ -104,10 +104,46 @@ st.markdown(
         }
 
         /* --- Kompakter vertikaler Rhythmus --- */
-        [data-testid="stVerticalBlock"] { gap: .55rem !important; }
-        [data-testid="stElementContainer"] { margin-bottom: 0 !important; }
-        [data-testid="stHorizontalBlock"] { gap: .5rem !important; }
-        [data-testid="column"] { min-width: 0 !important; }
+        /* --- Robustes Layout: Elemente dürfen sich nie überlagern --- */
+        [data-testid="stVerticalBlock"] {
+            gap: .8rem !important;
+            min-width: 0 !important;
+        }
+
+        [data-testid="stElementContainer"] {
+            margin-bottom: 0 !important;
+            min-width: 0 !important;
+            position: relative;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            gap: .7rem !important;
+            align-items: stretch !important;
+            min-width: 0 !important;
+            flex-wrap: wrap !important;
+        }
+
+        [data-testid="column"] {
+            min-width: 0 !important;
+            width: auto !important;
+            flex: 1 1 0 !important;
+        }
+
+        /* Streamlit-Widgets innerhalb von Spalten nicht aus der Spalte herausragen lassen */
+        [data-testid="column"] > div,
+        [data-testid="column"] [data-testid="stElementContainer"] {
+            max-width: 100% !important;
+            min-width: 0 !important;
+        }
+
+        /* Lange Texte niemals über andere UI-Elemente laufen lassen */
+        button, input, textarea, select,
+        [data-testid="stMarkdownContainer"],
+        [data-testid="stCaptionContainer"] {
+            max-width: 100% !important;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
 
         /* --- Marke --- */
         .brand {
@@ -126,15 +162,23 @@ st.markdown(
             font-weight: 700;
             margin: 0 0 .25rem;
         }
-        /* Kompakte App-Kopfzeile auf Unterseiten (Titel bündig zum Zurück-Button) */
+        /* Kompakte App-Kopfzeile auf Unterseiten (Titel bündig zum Zurück-Button).
+           FIX: statt fester line-height:46px jetzt Flexbox → der Titel
+           überlappt den Zurück-Button nie mehr. */
         .brand-kompakt {
             text-align: center;
             font-size: 1.02rem;
             font-weight: 900;
             letter-spacing: -.4px;
             color: var(--text);
-            line-height: 46px;
+            line-height: 1.15;
+            min-height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .section-label {
@@ -150,9 +194,19 @@ st.markdown(
             z-index: 3;
         }
 
-        /* --- Statistikleiste --- */
-        .stats-row { display: flex; gap: .45rem; margin-top: .1rem; }
-        .stats-row .stat-card { flex: 1 1 0; min-width: 0; }
+        /* --- Statistikleiste: Flex-Row, teilt den Platz automatisch auf --- */
+        .stats-row {
+            display: flex;
+            gap: .55rem;
+            margin-top: .1rem;
+            width: 100%;
+            align-items: stretch;
+            flex-wrap: wrap;
+        }
+        .stats-row .stat-card {
+            flex: 1 1 120px;
+            min-width: 0;
+        }
         .stat-card {
             background: rgba(255,255,255,.78);
             border: 1px solid var(--border);
@@ -169,13 +223,18 @@ st.markdown(
         }
         .stat-label { color: var(--muted); font-size: .66rem; }
 
-        /* --- Echte HTML-Karten (Bild + Infos in einer Fläche) --- */
+        /* --- Echte HTML-Karten (Bild + Infos in einer Fläche).
+               FIX: width:100% + overflow:hidden → Inhalt kann nicht
+               über die Kartenränder hinausragen. --- */
         .hero-card {
             background: var(--surface);
             border-radius: 25px;
-            padding: .4rem .4rem .6rem;
+            padding: .4rem .4rem .7rem;
             box-shadow: var(--shadow);
             border: 1px solid rgba(107,82,163,.08);
+            width: 100%;
+            overflow: hidden;
+            position: relative;
         }
         .hero-card img {
             width: 100%;
@@ -187,9 +246,12 @@ st.markdown(
         .grid-card {
             background: var(--surface);
             border-radius: 18px;
-            padding: .3rem .3rem .55rem;
+            padding: .3rem .3rem .65rem;
             box-shadow: var(--shadow);
             border: 1px solid rgba(107,82,163,.08);
+            width: 100%;
+            overflow: hidden;
+            position: relative;
         }
         .grid-card img {
             width: 100%;
@@ -203,8 +265,10 @@ st.markdown(
             font-size: clamp(1.05rem, 4.6vw, 1.25rem);
             font-weight: 850;
             color: var(--text);
-            margin: .5rem .35rem .05rem;
+            margin: .6rem .35rem .15rem;
+            line-height: 1.3;
             overflow-wrap: anywhere;
+            word-break: break-word;
         }
         .meta-zeile { margin: .05rem .35rem .2rem; font-size: .8rem; }
         .grid-caption {
@@ -230,15 +294,18 @@ st.markdown(
             font-weight: 750;
         }
 
+        /* FIX: max-width + vertikale Ausrichtung statt fixed vertical-align:2px */
         .status {
             display: inline-block;
+            vertical-align: middle;
             border-radius: 999px;
             padding: .22rem .65rem;
-            margin-left: .3rem;
+            margin: .15rem 0 .15rem .3rem;
             font-size: .66rem;
+            line-height: 1.2;
             font-weight: 800;
-            vertical-align: 2px;
             white-space: nowrap;
+            max-width: 100%;
         }
         .status-gefunden       { background: #DFF5E1; color: #2E7D32; }
         .status-vermisst       { background: #FDE3E3; color: #C62828; }
@@ -284,9 +351,19 @@ st.markdown(
         .confidence-fill { background: linear-gradient(90deg, var(--purple), var(--lavender-2)); height: 100%; border-radius: 999px; }
         .divider { height: 1px; background: var(--border); margin: .65rem 0; }
 
-        /* --- Buttons: Touch-freundlich (min. 46 px), volle Breite --- */
+        /* --- Buttons: Touch-freundlich (min. 46 px), volle Breite.
+               FIX: auch der stButton-Container selbst bekommt volle Breite
+               und margin:0 → keine Streamlit-Standardabstände mehr, die
+               bei Spalten-Layouts zu Verschiebungen führen. --- */
+        div.stButton {
+            width: 100%;
+            min-width: 0;
+            margin: 0 !important;
+        }
+
         div.stButton > button {
             width: 100%;
+            min-width: 0;
             min-height: 46px;
             border-radius: 999px !important;
             border: 0 !important;
@@ -296,13 +373,18 @@ st.markdown(
             padding: .45rem .8rem !important;
             transition: transform .12s ease, box-shadow .12s ease;
         }
-        div.stButton > button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(107,82,163,.18); }
-        div.stButton > button:active { transform: scale(.97); }
+        div.stButton > button:hover {
+            box-shadow: 0 8px 18px rgba(107,82,163,.18);
+        }
+        div.stButton > button:active {
+            transform: scale(.985);
+        }
         div.stButton > button[kind="primary"] { background: var(--purple) !important; color: #fff !important; }
         div.stButton > button[kind="secondary"],
         div.stButton > button.secondary { background: var(--lavender) !important; color: var(--purple) !important; }
 
-        /* --- Widgets --- */
+        /* --- Widgets ---
+           16 px Schrift in Feldern → iOS-Safari zoomt beim Antippen nicht automatisch rein. */
         [data-testid="stTextInput"] input, .stTextInput input,
         [data-testid="stDateInput"] input, .stDateInput input,
         div[data-baseweb="select"] input {
@@ -355,7 +437,7 @@ st.markdown(
         }
         [data-testid="stAlert"] { border-radius: 16px; font-size: .85rem; }
 
-        /* --- Foto-Uploader --- */
+        /* --- Foto-Uploader: eine kompakte Fläche --- */
         .stFileUploader, [data-testid="stFileUploader"] {
             background: var(--lavender);
             border-radius: 22px;
@@ -371,6 +453,9 @@ st.markdown(
             border: 0 !important;
             border-radius: 15px !important;
             min-height: 112px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
         }
         [data-testid="stFileUploaderDropzone"] button {
             border-radius: 999px !important;
@@ -400,12 +485,60 @@ st.markdown(
             max-height: 48vh;
         }
 
-        /* --- Feinanpassung für sehr schmale / flache Fenster --- */
+        /* --- Responsive Schutz gegen Überlappungen --- */
+        @media (max-width: 520px) {
+            [data-testid="stHorizontalBlock"] {
+                flex-wrap: nowrap !important;
+            }
+
+            [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+                min-width: 0 !important;
+            }
+
+            .stats-row {
+                flex-wrap: nowrap;
+            }
+
+            .status {
+                white-space: normal;
+                text-align: center;
+            }
+
+            .brand-kompakt {
+                font-size: .98rem;
+            }
+
+            div.stButton > button {
+                min-height: 46px !important;
+                padding-left: .55rem !important;
+                padding-right: .55rem !important;
+            }
+        }
+
         @media (max-width: 380px) {
+            [data-testid="stHorizontalBlock"] {
+                gap: .45rem !important;
+            }
+
+            .stats-row {
+                gap: .35rem;
+            }
+
+            .stats-row .stat-card {
+                flex-basis: 0;
+            }
+
+            .status {
+                font-size: .6rem;
+                padding-left: .5rem;
+                padding-right: .5rem;
+            }
+
             .stat-card { padding: .45rem .2rem; }
             .grid-card { padding: .25rem .25rem .5rem; }
             .ai-card { padding: .65rem .7rem; }
         }
+
         @media (max-height: 700px) and (max-width: 560px) {
             .hero-card img { aspect-ratio: 1.7 / 1; }
             .stImage img, [data-testid="stImage"] img { aspect-ratio: 1.7 / 1; }
