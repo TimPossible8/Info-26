@@ -1,0 +1,5 @@
+0 Hose
+1 T-Shirt
+2 Schuhe
+3 socken
+4 Class 5
