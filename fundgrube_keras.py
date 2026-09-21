@@ -844,16 +844,18 @@ def ai_karte_scan_html(res):
     farbe = res.get("farbe")
     stil = res.get("stil") or []
     modell = (res.get("modell") or "KI").upper()
+    farbe_anzeige = _esc(str(farbe)) if farbe else "–"
+    stil_anzeige = ", ".join(_esc(str(s)) for s in stil) if stil else "–"
     return (
         "<div class='ai-card'>"
         "<div class='ai-headline'>🤖 KI-Erkenntnis</div>"
-        f"<div>Erkannte Kategorie: <strong>{_esc(res['kategorie'])}</strong>"
+        f"<div>Erkannte Kategorie: <strong>{_esc(str(res.get('kategorie') or '–'))}</strong>"
         f" <span class='muted'>· Modell: {modell}</span></div>"
         f"<div class='confidence-bar'><div class='confidence-fill' style='width:{prozent}%'></div></div>"
         f"<div class='muted'>Konfidenz: {prozent} %</div>"
         "<div class='divider'></div>"
-        f"<div class='muted'>Farbe: <strong>{_esc(farbe) or '–'}</strong></div>"
-        f"<div class='muted'>Merkmale: <strong>{', '.join(_esc(s) for s in stil) or '–'}</strong></div>"
+        f"<div class='muted'>Farbe: <strong>{farbe_anzeige}</strong></div>"
+        f"<div class='muted'>Merkmale: <strong>{stil_anzeige}</strong></div>"
         f"<div class='pill-row' style='margin-top:.4rem'>{pills_html(res.get('tags'))}</div>"
         "</div>"
     )
@@ -1184,3 +1186,4 @@ elif st.session_state.page == "detail":
     render_detail()
 else:
     go("home")
+
